@@ -1,0 +1,96 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "IBM Plex Mono", monospace;
+  --color-orange-400: var(--color-brand-primary-light, #fb923c);
+  --color-orange-500: var(--color-brand-primary, #f97316);
+  --color-orange-600: var(--color-brand-primary-hover, #ea580c);
+  --color-orange-800: var(--color-brand-primary-dark, #9a3412);
+}
+
+html,
+body {
+  @apply bg-white dark:bg-gray-950;
+  scroll-behavior: smooth;
+
+  @media (prefers-color-scheme: dark) {
+    color-scheme: dark;
+  }
+}
+
+/* Custom Keyframes & Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes glowPulse {
+  0%, 100% { opacity: 0.85; filter: drop-shadow(0 0 2px rgba(249, 115, 22, 0.4)); }
+  50% { opacity: 1; filter: drop-shadow(0 0 10px rgba(249, 115, 22, 0.8)); }
+}
+
+@keyframes pulseSubtle {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+
+/* Animations Utility Classes */
+.animate-fade-in {
+  animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.animate-glow-pulse {
+  animation: glowPulse 2s infinite ease-in-out;
+}
+
+.animate-pulse-subtle {
+  animation: pulseSubtle 3s infinite ease-in-out;
+}
+
+/* Staggered animation delays */
+.animation-delay-50 { animation-delay: 50ms; }
+.animation-delay-100 { animation-delay: 100ms; }
+.animation-delay-200 { animation-delay: 200ms; }
+.animation-delay-300 { animation-delay: 300ms; }
+.animation-delay-400 { animation-delay: 400ms; }
+.animation-delay-500 { animation-delay: 500ms; }
+.animation-delay-600 { animation-delay: 600ms; }
+
+/* Interactive Hover/Active states */
+.hover-glow-orange {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.hover-glow-orange:hover {
+  border-color: var(--color-brand-primary, #f97316) !important;
+  box-shadow: 0 0 25px rgba(249, 115, 22, 0.2);
+}
+
+.hover-glow-purple {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.hover-glow-purple:hover {
+  border-color: #a855f7 !important;
+  box-shadow: 0 0 25px rgba(168, 85, 247, 0.2);
+}
+
+.hover-glow-green {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.hover-glow-green:hover {
+  border-color: #22c55e !important;
+  box-shadow: 0 0 25px rgba(34, 197, 94, 0.2);
+}
+
+/* Global smooth transitions */
+a, button, select, input, textarea, .interactive-card, [role="button"] {
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}

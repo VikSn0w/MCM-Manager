@@ -1,0 +1,164 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id            String        @id @default(cuid())
+  email         String        @unique
+  password      String
+  name          String
+  role          String        @default("CUSTOMER") // "CUSTOMER" | "ADMIN"
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  bookings      Booking[]
+  pilotBookings BookingBike[] @relation("PilotBookings")
+}
+
+model BikeModel {
+  id                String   @id @default(cuid())
+  name              String   // e.g. "Ohvale GP-0 160 4S Evo"
+  builder           String   @default("Ohvale")
+  model             String   // e.g. "GP-0 160 4S Evo"
+  displacement      Int
+  priceModifier     Float    @default(1.0)
+  insurancePrice    Float    @default(25.0)
+  insuranceCoverage Float    @default(250.0)
+  imageUrl          String?
+  bgColor           String?
+  info              String?  // specs or general model info
+  hp                Float?
+  hpRpm             Int?
+  torque            Float?
+  torqueRpm         Int?
+  usage             String   @default("BOTH") // "RENTAL" | "ACADEMY" | "BOTH"
+  gearbox           String?  // e.g. "Automatic", "4-Speed", "5-Speed"
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  bikes             Bike[]
+  lessons           Lesson[]
+}
+
+model Bike {
+  id         String        @id @default(cuid())
+  modelId    String
+  model      BikeModel     @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  status     String        @default("AVAILABLE") // "AVAILABLE" | "MAINTENANCE" | "RETIRED"
+  raceNumber Int?
+  alias      String?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  bookings   BookingBike[]
+}
+
+model Tariff {
+  id                            String   @id @default(cuid())
+  dayOfWeek                     Int      @unique // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  basePricePerSession           Float
+  basePricePerPerson            Float
+  minSessions                   Int      @default(1)
+  maxSessions                   Int      @default(6)
+  discountThreshold             Int      @default(3)
+  discountThresholdPrice        Float    @default(60.0)
+  pricePerSessionAfterThreshold Float    @default(20.0)
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+}
+
+model DayConfig {
+  id                  String   @id @default(cuid())
+  date                String   @unique // "YYYY-MM-DD"
+  isAvailable         Boolean  @default(true)
+  customPriceModifier Float? // optional multiplier for holiday/peak days
+  maxCapacityPerSlot  Int      @default(5)
+  notes               String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model TimeSlot {
+  id              String   @id @default(cuid())
+  time            String // "09:00", "11:00", "14:00", "16:00"
+  label           String
+  maxParticipants Int      @default(5)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Booking {
+  id                String        @id @default(cuid())
+  userId            String
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date              String // "YYYY-MM-DD"
+  sessionsCount     Int
+  peopleCount       Int
+  hours             String // Comma separated, e.g. "09:00, 11:00"
+  totalPrice        Float
+  status            String        @default("CONFIRMED") // "CONFIRMED" | "CANCELLED"
+  bookingType       String        @default("STANDARD") // "STANDARD" | "CHAMPIONSHIP"
+  championshipType  String? // "GP_SPRINT" | "GP_PLUS"
+  bikeSelectionMode String        @default("MIXED") // "MIXED" | "FIXED"
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  bikes             BookingBike[]
+}
+
+model BookingBike {
+  id                String  @id @default(cuid())
+  bookingId         String
+  booking           Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  bikeId            String
+  bike              Bike    @relation(fields: [bikeId], references: [id], onDelete: Restrict)
+  insuranceSelected Boolean @default(false)
+  apparelSelected   Boolean @default(false)
+  pilotName         String?
+  pilotUserId       String?
+  pilotUser         User?   @relation("PilotBookings", fields: [pilotUserId], references: [id], onDelete: SetNull)
+
+  @@unique([bookingId, bikeId])
+}
+
+model Championship {
+  id            String   @id @default(cuid())
+  name          String // e.g. "GP Sprint", "GP PLUS"
+  description   String // e.g. "10 mins free laps, 10 mins qualify, 8-lap race"
+  price         Float // Price per racer
+  minRacers     Int      @default(5)
+  sessionsCount Int      @default(3) // sessions it occupies
+  isAvailable   Boolean  @default(true)
+  fixedDate     String? // optional: "YYYY-MM-DD" for scheduled championships
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model CompanyConfig {
+  id            String   @id @default("single-config")
+  companyName   String   @default("LeasioGP Paddock")
+  logoUrl       String   @default("/images/logo.png")
+  circuitName   String   @default("Adria International Raceway")
+  googleMapsUrl String?
+  updatedAt     DateTime @updatedAt
+}
+
+model Lesson {
+  id            String     @id @default(cuid())
+  title         String     // English title
+  titleIt       String     // Italian title
+  description   String     // English description
+  descriptionIt String     // Italian description
+  duration      String     // English duration (e.g., "2 Hours")
+  durationIt    String     // Italian duration (e.g., "2 Ore")
+  time          String     // English timing (e.g., "09:00 - 11:00" or "Custom")
+  timeIt        String     // Italian timing (e.g., "09:00 - 11:00" or "Su Misura")
+  cost          Float      // cost in Euros
+  isAvailable   Boolean    @default(true)
+  bikeModelId   String?
+  bikeModel     BikeModel? @relation(fields: [bikeModelId], references: [id], onDelete: SetNull)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
