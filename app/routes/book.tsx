@@ -146,29 +146,23 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   const selectedHoursStr = formData.get("selectedHours")?.toString() || ""; // comma separated
-  const bikesJson = formData.get("bikesAssignment")?.toString() || "[]"; // array of {bikeId, insuranceSelected, apparelSelected}
+  const bikesJson = formData.get("bikesAssignment")?.toString() || "[]"; // array of {modelId, insuranceSelected, apparelSelected}
 
   if (!dateStr || ridersCount <= 0 || sessionsCount <= 0 || !selectedHoursStr || !bikesJson) {
     return { error: "Missing essential paddock booking details." };
   }
 
   const selectedHours = selectedHoursStr.split(",").map(h => h.trim()).filter(Boolean);
-  const bikeAssignments = JSON.parse(bikesJson) as Array<{
-    bikeId: string;
+  const bikeModelAssignments = JSON.parse(bikesJson) as Array<{
+    modelId: string;
     insuranceSelected: boolean;
     apparelSelected: boolean;
     pilotName?: string;
     pilotEmail?: string;
   }>;
 
-  if (bikeAssignments.length !== ridersCount) {
-    return { error: "Every rider must be assigned an available Ohvale GP." };
-  }
-
-  // Verify unique bike selections to prevent multiple assignments to different riders
-  const assignedBikeIds = bikeAssignments.map(a => a.bikeId).filter(Boolean);
-  if (new Set(assignedBikeIds).size !== assignedBikeIds.length) {
-    return { error: "Duplicate bike selection detected. Each rider must be assigned a unique Ohvale GP." };
+  if (bikeModelAssignments.length !== ridersCount) {
+    return { error: "Every rider must be assigned an available Ohvale GP model." };
   }
 
   // 1. Fetch Day Config / Overrides for custom limits and closures
@@ -203,7 +197,7 @@ export async function action({ request }: Route.ActionArgs) {
     }
   }
 
-  // 3. Double booking checks for the selected bikes on that date
+  // 3. Dynamic allocation of specific available bikes based on requested models on that date
   const bookedBikesOnDate = await prisma.bookingBike.findMany({
     where: {
       booking: {
@@ -215,14 +209,8 @@ export async function action({ request }: Route.ActionArgs) {
   });
 
   const bookedBikeIds = bookedBikesOnDate.map(bb => bb.bikeId);
-  for (const assignment of bikeAssignments) {
-    if (bookedBikeIds.includes(assignment.bikeId)) {
-      const bikeDetails = await prisma.bike.findUnique({ where: { id: assignment.bikeId }, include: { model: true } });
-      return { error: `Whoops! ${bikeDetails?.model.name || "One of your selected bikes"} is already reserved on this date.` };
-    }
-  }
 
-  // 3.5 Check if enough total unbooked bikes are available in system on selected date
+  // Fetch all available active fleet bikes
   const availableBikesSystem = await prisma.bike.findMany({
     where: { 
       status: "AVAILABLE",
@@ -237,6 +225,35 @@ export async function action({ request }: Route.ActionArgs) {
   
   const unbookedBikesSystem = availableBikesSystem.filter(b => !bookedBikeIds.includes(b.id));
 
+  // Perform dynamic matching
+  const bikeAssignments: Array<{
+    bikeId: string;
+    insuranceSelected: boolean;
+    apparelSelected: boolean;
+    pilotName?: string;
+    pilotEmail?: string;
+  }> = [];
+
+  const allocatedBikeIdsInRequest = new Set<string>();
+
+  for (const assignment of bikeModelAssignments) {
+    const candidateBike = unbookedBikesSystem.find(
+      b => b.modelId === assignment.modelId && !allocatedBikeIdsInRequest.has(b.id)
+    );
+    if (!candidateBike) {
+      const modelDetails = await prisma.bikeModel.findUnique({ where: { id: assignment.modelId } });
+      return { error: `Sorry! There are no more available Ohvale GP bikes of model "${modelDetails?.name || "selected"}" for this date.` };
+    }
+    allocatedBikeIdsInRequest.add(candidateBike.id);
+    bikeAssignments.push({
+      bikeId: candidateBike.id,
+      insuranceSelected: assignment.insuranceSelected,
+      apparelSelected: assignment.apparelSelected,
+      pilotName: assignment.pilotName,
+      pilotEmail: assignment.pilotEmail,
+    });
+  }
+
   if (bikeSelectionMode === "FIXED") {
     const modelCounts: Record<string, number> = {};
     unbookedBikesSystem.forEach(b => {
@@ -245,10 +262,6 @@ export async function action({ request }: Route.ActionArgs) {
     const hasEnoughForFixed = Object.values(modelCounts).some(count => count >= ridersCount);
     if (!hasEnoughForFixed) {
       return { error: `Sorry! There are not enough unreserved Ohvale bikes of a single model to support a Fixed Grid booking of ${ridersCount} riders on this date.` };
-    }
-  } else {
-    if (unbookedBikesSystem.length < ridersCount) {
-      return { error: `Sorry! There are not enough unreserved Ohvale bikes available to support a booking of ${ridersCount} riders on this date.` };
     }
   }
 
@@ -264,12 +277,9 @@ export async function action({ request }: Route.ActionArgs) {
 
   // Validation for Fixed Model Grid mode constraints
   if (bikeSelectionMode === "FIXED") {
-    const selectedBikes = await Promise.all(
-      bikeAssignments.map(async (assign) => {
-        const bike = await prisma.bike.findUnique({ where: { id: assign.bikeId }, include: { model: true } });
-        return bike;
-      })
-    );
+    const selectedBikes = bikeAssignments.map((assign) => {
+      return availableBikesSystem.find(b => b.id === assign.bikeId);
+    });
     const models = selectedBikes.map(b => b?.model.model).filter(Boolean);
     if (new Set(models).size > 1) {
       return { error: "Fixed grid mode requires all riders to compete on the exact same bike model." };
@@ -310,7 +320,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   // Add individual bike modifiers, insurance, and apparel
   for (const assignment of bikeAssignments) {
-    const bike = await prisma.bike.findUnique({ where: { id: assignment.bikeId }, include: { model: true } });
+    const bike = availableBikesSystem.find(b => b.id === assignment.bikeId);
     if (!bike || bike.status !== "AVAILABLE") {
       return { error: `One of the selected bikes is not available.` };
     }
@@ -439,6 +449,7 @@ export default function Book() {
   );
   const [bikeSelectionMode, setBikeSelectionMode] = useState<"MIXED" | "FIXED">("MIXED");
   const uniqueModels = Array.from(new Set(bikes.map(b => b.model.model)));
+  const uniqueBikeModels = Array.from(new Map(bikes.map(b => [b.model.id, b.model])).values());
   const [selectedFixedModel, setSelectedFixedModel] = useState<string>(uniqueModels[0] || "");
   const [date, setDate] = useState(
     preSelectedChampionship?.fixedDate || ""
@@ -448,7 +459,7 @@ export default function Book() {
   );
   const [sessionsCount, setSessionsCount] = useState(2);
   const [selectedHours, setSelectedHours] = useState<string[]>([]);
-  const [bikesAssignment, setBikesAssignment] = useState<Array<{ bikeId: string; insuranceSelected: boolean; apparelSelected: boolean }>>([]);
+  const [bikesAssignment, setBikesAssignment] = useState<Array<{ modelId: string; insuranceSelected: boolean; apparelSelected: boolean }>>([]);
 
   // Pilot details state matching ridersCount size
   const [pilots, setPilots] = useState<Array<{ name: string; email: string }>>([
@@ -541,8 +552,8 @@ export default function Book() {
 
     // Bike modifiers, insurance & apparel rentals
     bikesAssignment.forEach((assignment) => {
-      const bike = bikes.find(b => b.id === assignment.bikeId);
-      if (bike) {
+      const model = uniqueBikeModels.find(m => m.id === assignment.modelId);
+      if (model) {
         if (bookingType === "STANDARD") {
           let baseSessionPack = getSessionsBasePrice(
             sessionsCount,
@@ -554,13 +565,13 @@ export default function Book() {
           if (currentPriceDetails.dayConfig?.customPriceModifier) {
             baseSessionPack *= currentPriceDetails.dayConfig.customPriceModifier;
           }
-          const modifierFee = baseSessionPack * (bike.model.priceModifier - 1.0);
+          const modifierFee = baseSessionPack * (model.priceModifier - 1.0);
           total += modifierFee;
         }
 
         // Insurance fee
         if (assignment.insuranceSelected) {
-          total += bike.model.insurancePrice;
+          total += model.insurancePrice;
         }
       }
 
@@ -634,10 +645,10 @@ export default function Book() {
     }
   };
 
-  const handleAssignBike = (riderIndex: number, bikeId: string) => {
+  const handleAssignModel = (riderIndex: number, modelId: string) => {
     const newAssignments = [...bikesAssignment];
     newAssignments[riderIndex] = {
-      bikeId,
+      modelId,
       insuranceSelected: newAssignments[riderIndex]?.insuranceSelected || false,
       apparelSelected: newAssignments[riderIndex]?.apparelSelected || false,
     };
@@ -682,12 +693,20 @@ export default function Book() {
       
       // Initialize bike assignments with empty or fallback values matching riders count
       const initial = Array.from({ length: ridersCount }).map((_, i) => {
-        return bikesAssignment[i] || { bikeId: "", insuranceSelected: false, apparelSelected: false };
+        const defaultModelId = bikeSelectionMode === "FIXED"
+          ? (uniqueBikeModels.find(m => m.model === selectedFixedModel)?.id || "")
+          : "";
+        const existing = bikesAssignment[i];
+        return {
+          modelId: existing?.modelId || defaultModelId,
+          insuranceSelected: existing?.insuranceSelected || false,
+          apparelSelected: existing?.apparelSelected || false,
+        };
       });
       setBikesAssignment(initial);
     } else if (step === 2) {
       if (selectedHours.length === 0) return;
-      const incomplete = bikesAssignment.some(ba => !ba.bikeId);
+      const incomplete = bikesAssignment.some(ba => !ba.modelId);
       if (incomplete) return;
       setStep(3);
     }
@@ -761,21 +780,11 @@ export default function Book() {
                     <span className="block text-xs uppercase text-slate-500 font-bold mb-2">{t.bikesSelected}</span>
                     <div className="space-y-2">
                       {bikesAssignment.map((assign, index) => {
-                        const bike = bikes.find(b => b.id === assign.bikeId);
+                        const model = uniqueBikeModels.find(m => m.id === assign.modelId);
                         return (
                           <div key={index} className="flex justify-between items-center text-xs bg-slate-950 p-2.5 rounded-lg border border-slate-900">
                             <span className="font-semibold text-slate-300 flex items-center flex-wrap gap-1.5">
-                               <span>{pilots[index]?.name || `Rider #${index + 1}`}: {bike?.model.name}</span>
-                              {bike?.raceNumber && (
-                                <span className="bg-orange-600 border border-orange-500/30 text-white font-mono font-black text-[9px] px-1.5 py-0.5 rounded select-none">
-                                  #{bike.raceNumber}
-                                </span>
-                              )}
-                              {bike?.alias && (
-                                <span className="text-orange-500 font-mono text-[10px] font-bold uppercase">
-                                  "{bike.alias}"
-                                </span>
-                              )}
+                               <span>{pilots[index]?.name || `Rider #${index + 1}`}: {model?.name}</span>
                             </span>
                             <div className="flex items-center gap-1.5 shrink-0">
                               {assign.insuranceSelected ? (
@@ -1456,7 +1465,7 @@ export default function Book() {
                 return (
                   <div className="space-y-6">
                     {Array.from({ length: ridersCount }).map((_, index) => {
-                      const assignment = bikesAssignment[index] || { bikeId: "", insuranceSelected: false, apparelSelected: false };
+                      const assignment = bikesAssignment[index] || { modelId: "", insuranceSelected: false, apparelSelected: false };
 
                       return (
                         <div key={index} className="bg-slate-950 p-6 rounded-2xl border border-slate-850 space-y-4">
@@ -1469,26 +1478,31 @@ export default function Book() {
                             </h4>
                           </div>
 
-                          {/* Bike Selector grid */}
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            {bikes
-                              .filter(b => !isBikeBookedOnDate(b.id) || assignment.bikeId === b.id)
-                              .filter(b => bikeSelectionMode !== "FIXED" || b.model.model === selectedFixedModel)
-                              .map((bike) => {
-                                const isSelected = assignment.bikeId === bike.id;
+                          {/* Bike Selector grid replaced by Model Selector grid */}
+                          {bikeSelectionMode === "FIXED" ? (
+                            <div className="p-4 rounded-xl border border-slate-800 bg-slate-900 flex items-center space-x-3 text-xs uppercase text-white font-black">
+                              <span>{selectedFixedModel}</span>
+                              <span className="text-[9px] text-slate-500 font-medium">({locale === "en" ? "Fixed Monomarca Grid" : "Griglia Monomarca Fissa"})</span>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {uniqueBikeModels.map((model) => {
+                                const isSelected = assignment.modelId === model.id;
                                 
-                                // Check if selected by another rider in the current wizard form
-                                const otherRiderIndex = bikesAssignment.findIndex((ba, idx) => idx !== index && ba.bikeId === bike.id);
-                                const isSelectedByOther = otherRiderIndex !== -1;
-
-                                const isDisabled = isSelectedByOther;
+                                // Check how many of this model are already allocated to other riders in this form
+                                const othersAllocated = bikesAssignment.filter((ba, idx) => idx !== index && ba.modelId === model.id).length;
+                                
+                                // Total available count of this model on this date
+                                const availableCount = getAvailableBikesCountForModel(model.model);
+                                const remainingCount = Math.max(0, availableCount - othersAllocated);
+                                const isDisabled = remainingCount <= 0 && !isSelected;
                                 
                                 return (
                                   <button
-                                    key={bike.id}
+                                    key={model.id}
                                     type="button"
                                     disabled={isDisabled}
-                                    onClick={() => handleAssignBike(index, bike.id)}
+                                    onClick={() => handleAssignModel(index, model.id)}
                                     className={`p-4 rounded-xl border text-left transition-all ${
                                       isSelected
                                         ? "bg-orange-600/10 border-orange-500 text-white cursor-default"
@@ -1498,60 +1512,43 @@ export default function Book() {
                                     }`}
                                   >
                                     <div className="flex items-center space-x-3">
-                                      {bike.model.imageUrl ? (
+                                      {model.imageUrl ? (
                                         <div 
                                           className="h-10 w-14 rounded-lg flex items-center justify-center overflow-hidden shrink-0 border border-slate-800/80 bg-slate-950 relative"
-                                          style={{ backgroundColor: bike.model.bgColor || '#1e293b' }}
+                                          style={{ backgroundColor: model.bgColor || '#1e293b' }}
                                         >
-                                          {bike.raceNumber && (
-                                            <div className="absolute top-0.5 left-0.5 bg-orange-600 border border-orange-500/30 text-white font-mono font-black text-[8px] px-1 rounded shadow select-none z-10">
-                                              #{bike.raceNumber}
-                                            </div>
-                                          )}
                                           <img 
-                                            src={bike.model.imageUrl} 
-                                            alt={bike.model.name} 
+                                            src={model.imageUrl} 
+                                            alt={model.name} 
                                             className="h-full w-full object-contain p-1"
                                           />
                                         </div>
                                       ) : (
                                         <div className="h-10 w-14 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-center shrink-0 relative">
-                                          {bike.raceNumber && (
-                                            <div className="absolute top-0.5 left-0.5 bg-orange-600 border border-orange-500/30 text-white font-mono font-black text-[8px] px-1 rounded shadow select-none z-10">
-                                              #{bike.raceNumber}
-                                            </div>
-                                          )}
                                           <Flag className="h-4.5 w-4.5 text-slate-600" />
                                         </div>
                                       )}
                                       <div className="min-w-0">
-                                        <span className="block font-bold text-xs uppercase truncate">{bike.model.name}</span>
-                                        {bike.alias && (
-                                          <span className="block text-[9px] text-orange-500 font-mono font-bold tracking-wider uppercase truncate mt-0.5">
-                                            "{bike.alias}"
-                                          </span>
-                                        )}
-                                        <span className="block text-[10px] text-slate-500 uppercase mt-0.5">Model: {bike.model.model}</span>
-                                        {isSelectedByOther && (
-                                          <span className="inline-block mt-1 text-[8px] bg-orange-600/10 text-orange-500 border border-orange-500/10 font-black uppercase px-1 py-0.5 rounded tracking-wide">
-                                            {locale === "en" ? `Rider #${otherRiderIndex + 1} Assigned` : `Assegnata a Pilota #${otherRiderIndex + 1}`}
-                                          </span>
-                                        )}
+                                        <span className="block font-bold text-xs uppercase truncate">{model.name}</span>
+                                        <span className="block text-[9px] text-slate-500 font-medium uppercase mt-0.5">
+                                          {locale === "en" ? `Available: ${remainingCount}` : `Disponibili: ${remainingCount}`}
+                                        </span>
                                       </div>
                                     </div>
                                     <div className="mt-2.5 flex justify-between items-center text-[10px] border-t border-slate-950 pt-2.5 text-slate-400">
-                                      <span>{locale === "en" ? "Modifier: " : "Modificatore: "}<strong className="text-white">x{bike.model.priceModifier.toFixed(1)}</strong></span>
-                                      <span>Ins: <strong className="text-orange-500">€{bike.model.insurancePrice.toFixed(0)}</strong></span>
+                                      <span>{locale === "en" ? "Modifier: " : "Modificatore: "}<strong className="text-white">x{model.priceModifier.toFixed(1)}</strong></span>
+                                      <span>Ins: <strong className="text-orange-500">€{model.insurancePrice.toFixed(0)}</strong></span>
                                     </div>
                                   </button>
                                 );
                               })}
-                          </div>
+                            </div>
+                          )}
 
                           {/* Optional Add-ons toggle section */}
-                          {assignment.bikeId && (() => {
-                            const bike = bikes.find(b => b.id === assignment.bikeId);
-                            if (!bike) return null;
+                          {assignment.modelId && (() => {
+                            const model = uniqueBikeModels.find(m => m.id === assignment.modelId);
+                            if (!model) return null;
 
                             return (
                               <div className="space-y-4">
@@ -1568,8 +1565,8 @@ export default function Book() {
                                     </span>
                                     <span className="block text-[10px] text-slate-400 leading-normal">
                                       {locale === "en" 
-                                        ? `Premium crash cover is €${bike.model.insurancePrice.toFixed(0)} and guarantees protection up to €${bike.model.insuranceCoverage.toFixed(0)} of bike damage in track crashes!`
-                                        : `La copertura premium costa €${bike.model.insurancePrice.toFixed(0)} e garantisce protezione fino a €${bike.model.insuranceCoverage.toFixed(0)} sui danni alla moto!`
+                                        ? `Premium crash cover is €${model.insurancePrice.toFixed(0)} and guarantees protection up to €${model.insuranceCoverage.toFixed(0)} of bike damage in track crashes!`
+                                        : `La copertura premium costa €${model.insurancePrice.toFixed(0)} e garantisce protezione fino a €${model.insuranceCoverage.toFixed(0)} sui danni alla moto!`
                                       }
                                     </span>
                                   </div>
@@ -1645,7 +1642,7 @@ export default function Book() {
               <button
                 type="button"
                 onClick={handleNextStep}
-                disabled={selectedHours.length === 0 || bikesAssignment.some(ba => !ba.bikeId)}
+                disabled={selectedHours.length === 0 || bikesAssignment.some(ba => !ba.modelId)}
                 className="flex items-center space-x-2 bg-orange-600 text-white font-extrabold uppercase tracking-wider text-xs px-8 py-4.5 rounded-xl hover:bg-orange-500 shadow-xl shadow-orange-600/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-[0.98] cursor-pointer"
               >
                 <span>{t.buttonNextStep3}</span>
@@ -1715,25 +1712,15 @@ export default function Book() {
                   <h3 className="text-xs uppercase text-slate-400 font-bold tracking-wider mb-2">{t.allocatedFleet}</h3>
                   
                   {bikesAssignment.map((assign, index) => {
-                    const bike = bikes.find(b => b.id === assign.bikeId);
+                    const model = uniqueBikeModels.find(m => m.id === assign.modelId);
                     return (
                       <div key={index} className="flex justify-between items-center text-xs p-3.5 bg-slate-900 border border-slate-850 rounded-xl">
                         <div>
                           <span className="block font-bold text-slate-200 uppercase flex items-center flex-wrap gap-1.5">
-                            <span>Rider #{index + 1}: {bike?.model.name}</span>
-                            {bike?.raceNumber && (
-                              <span className="bg-orange-600 border border-orange-500/30 text-white font-mono font-black text-[9px] px-1.5 py-0.5 rounded select-none">
-                                #{bike.raceNumber}
-                              </span>
-                            )}
+                            <span>Rider #{index + 1}: {model?.name}</span>
                           </span>
-                          {bike?.alias && (
-                            <span className="block text-[10px] text-orange-500 font-mono font-bold tracking-wider uppercase mt-0.5">
-                              "{bike.alias}"
-                            </span>
-                          )}
                           {bookingType === "STANDARD" && (
-                            <span className="block text-[10px] text-slate-500 mt-0.5 uppercase">Modifier: x{bike?.model.priceModifier.toFixed(1)}</span>
+                            <span className="block text-[10px] text-slate-500 mt-0.5 uppercase">Modifier: x{model?.priceModifier.toFixed(1)}</span>
                           )}
                         </div>
                         <div className="flex flex-col gap-1.5 items-end">
@@ -1803,13 +1790,13 @@ export default function Book() {
                         </div>
 
                         {/* Bike modifiers additions */}
-                        {bikesAssignment.some(ba => (bikes.find(b => b.id === ba.bikeId)?.model.priceModifier || 1.0) > 1.0) && (
+                        {bikesAssignment.some(ba => (uniqueBikeModels.find(m => m.id === ba.modelId)?.priceModifier || 1.0) > 1.0) && (
                           <div className="flex justify-between">
                             <span className="text-slate-400">{t.highEndModifiers}:</span>
                             <span className="font-semibold text-orange-400">
                               +€{bikesAssignment.reduce((acc, assign) => {
-                                const bike = bikes.find(b => b.id === assign.bikeId);
-                                if (bike) {
+                                const model = uniqueBikeModels.find(m => m.id === assign.modelId);
+                                if (model) {
                                   let baseSessionPriceForCount = getSessionsBasePrice(
                                     sessionsCount,
                                     currentPriceDetails.tariff.basePricePerSession,
@@ -1820,8 +1807,8 @@ export default function Book() {
                                   if (currentPriceDetails.dayConfig?.customPriceModifier) {
                                     baseSessionPriceForCount *= currentPriceDetails.dayConfig.customPriceModifier;
                                   }
-                                  const extra = baseSessionPriceForCount * (bike.model.priceModifier - 1.0);
-                                  return acc + extra;
+                                  const modelFee = baseSessionPriceForCount * (model.priceModifier - 1.0);
+                                  return acc + modelFee;
                                 }
                                 return acc;
                               }, 0).toFixed(0)}
@@ -1838,8 +1825,8 @@ export default function Book() {
                         <span className="font-semibold text-green-400">
                           +€{bikesAssignment.reduce((acc, assign) => {
                             if (assign.insuranceSelected) {
-                              const bike = bikes.find(b => b.id === assign.bikeId);
-                              return acc + (bike?.model.insurancePrice || 0);
+                              const model = uniqueBikeModels.find(m => m.id === assign.modelId);
+                              return acc + (model?.insurancePrice || 0);
                             }
                             return acc;
                           }, 0).toFixed(0)}
@@ -1880,7 +1867,9 @@ export default function Book() {
                     name="bikesAssignment"
                     value={JSON.stringify(
                       bikesAssignment.map((ba, idx) => ({
-                        ...ba,
+                        modelId: ba.modelId,
+                        insuranceSelected: ba.insuranceSelected,
+                        apparelSelected: ba.apparelSelected,
                         pilotName: pilots[idx]?.name || "",
                         pilotEmail: pilots[idx]?.email || "",
                       }))
