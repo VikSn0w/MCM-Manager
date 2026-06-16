@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import { requireAdmin } from "../../utils/auth.server";
 import { prisma } from "../../utils/db.server";
 import { getLocale } from "../../utils/locale.server";
+import { sendBookingCreatedEmail, sendBookingConfirmedEmail, sendBookingCancelledEmail } from "../../utils/email.server";
 import { translations, type Locale } from "../../utils/translations";
 import { 
   Calendar as CalendarIcon, 
@@ -24,18 +25,19 @@ import {
   ShieldCheck,
   Flag,
   CheckCircle2,
-  FileText
+  FileText,
+  Euro
 } from "lucide-react";
 
 export async function loader({ request }: Route.LoaderArgs) {
   await requireAdmin(request);
   const locale = await getLocale(request);
-  const [dayConfigs, bookings, bikes, bikeModels, users, timeSlots] = await Promise.all([
+  const [dayConfigs, bookings, bikes, bikeModels, users, timeSlots, tariffs] = await Promise.all([
     prisma.dayConfig.findMany({
       orderBy: { date: "asc" },
     }),
     prisma.booking.findMany({
-      where: { status: "CONFIRMED" },
+      where: { status: { in: ["CONFIRMED", "PENDING"] } },
       include: {
         user: { select: { id: true, name: true, email: true } },
         bikes: {
@@ -63,10 +65,11 @@ export async function loader({ request }: Route.LoaderArgs) {
     }),
     prisma.timeSlot.findMany({
       orderBy: { time: "asc" }
-    })
+    }),
+    prisma.tariff.findMany()
   ]);
 
-  return { dayConfigs, bookings, bikes, bikeModels, users, timeSlots, locale };
+  return { dayConfigs, bookings, bikes, bikeModels, users, timeSlots, tariffs, locale };
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -127,6 +130,8 @@ export async function action({ request }: Route.ActionArgs) {
     const sessionsCount = parseInt(formData.get("sessionsCount")?.toString() || "0", 10);
     const selectedHoursStr = formData.get("selectedHours")?.toString() || ""; // comma separated
     const bikesJson = formData.get("bikesAssignment")?.toString() || "[]"; // array of {modelId, insuranceSelected, apparelSelected, pilotName, pilotEmail}
+    const customCostStr = formData.get("customCost")?.toString();
+    const customCost = customCostStr && customCostStr.trim() !== "" ? parseFloat(customCostStr) : null;
 
     if (!email || !name || !dateStr || ridersCount <= 0 || sessionsCount <= 0 || !selectedHoursStr || !bikesJson) {
       return { error: "Missing essential appointment details." };
@@ -165,12 +170,12 @@ export async function action({ request }: Route.ActionArgs) {
 
     // B. Check capacity constraints per hour
     const dayConfig = await prisma.dayConfig.findUnique({
-      where: { date: dateStr }
+      where: { date: dateStr! }
     });
     const slotCapacity = dayConfig ? dayConfig.maxCapacityPerSlot : 5;
 
     const bookingsOnDate = await prisma.booking.findMany({
-      where: { date: dateStr, status: "CONFIRMED" }
+      where: { date: dateStr!, status: { in: ["CONFIRMED", "PENDING"] } }
     });
 
     for (const hour of selectedHours) {
@@ -193,8 +198,8 @@ export async function action({ request }: Route.ActionArgs) {
     const bookedBikesOnDate = await prisma.bookingBike.findMany({
       where: {
         booking: {
-          date: dateStr,
-          status: "CONFIRMED"
+          date: dateStr!,
+          status: { in: ["CONFIRMED", "PENDING"] }
         }
       },
       select: { bikeId: true }
@@ -240,54 +245,58 @@ export async function action({ request }: Route.ActionArgs) {
       });
     }
 
-    // D. Price Calculation (Tariff + Modifiers)
-    const parsedDate = new Date(dateStr);
-    const dayOfWeek = parsedDate.getDay();
-    const tariff = await prisma.tariff.findUnique({
-      where: { dayOfWeek }
-    });
-
-    if (!tariff) {
-      return { error: "Pricing tariff rules for this day of the week are missing." };
-    }
-
-    const getSessionsBasePrice = (
-      sessions: number,
-      basePricePerSession: number,
-      discountThreshold: number,
-      discountThresholdPrice: number,
-      pricePerSessionAfterThreshold: number
-    ) => {
-      if (sessions < discountThreshold) {
-        return sessions * basePricePerSession;
-      }
-      return discountThresholdPrice + (sessions - discountThreshold) * pricePerSessionAfterThreshold;
-    };
-
-    const customModifier = dayConfig?.customPriceModifier || 1.0;
+    // D. Price Calculation (Tariff + Modifiers) or Custom Cost Override
     let finalPrice = 0;
+    if (customCost !== null && !isNaN(customCost)) {
+      finalPrice = customCost;
+    } else {
+      const parsedDate = new Date(dateStr);
+      const dayOfWeek = parsedDate.getDay();
+      const tariff = await prisma.tariff.findUnique({
+        where: { dayOfWeek }
+      });
 
-    const baseSessionsPricePerRider = getSessionsBasePrice(
-      sessionsCount,
-      tariff.basePricePerSession,
-      tariff.discountThreshold,
-      tariff.discountThresholdPrice,
-      tariff.pricePerSessionAfterThreshold
-    ) * customModifier;
-    const basePersonPrice = tariff.basePricePerPerson * customModifier;
-    finalPrice += (basePersonPrice + baseSessionsPricePerRider) * ridersCount;
-
-    for (const assignment of finalBikeAssignments) {
-      const bike = availableBikes.find(b => b.id === assignment.bikeId);
-      if (bike) {
-        const bikeFee = baseSessionsPricePerRider * (bike.model.priceModifier - 1.0);
-        finalPrice += bikeFee;
-        if (assignment.insuranceSelected) {
-          finalPrice += bike.model.insurancePrice;
-        }
+      if (!tariff) {
+        return { error: "Pricing tariff rules for this day of the week are missing." };
       }
-      if (assignment.apparelSelected) {
-        finalPrice += 10.0;
+
+      const getSessionsBasePrice = (
+        sessions: number,
+        basePricePerSession: number,
+        discountThreshold: number,
+        discountThresholdPrice: number,
+        pricePerSessionAfterThreshold: number
+      ) => {
+        if (sessions < discountThreshold) {
+          return sessions * basePricePerSession;
+        }
+        return discountThresholdPrice + (sessions - discountThreshold) * pricePerSessionAfterThreshold;
+      };
+
+      const customModifier = dayConfig?.customPriceModifier || 1.0;
+
+      const baseSessionsPricePerRider = getSessionsBasePrice(
+        sessionsCount,
+        tariff.basePricePerSession,
+        tariff.discountThreshold,
+        tariff.discountThresholdPrice,
+        tariff.pricePerSessionAfterThreshold
+      ) * customModifier;
+      const basePersonPrice = tariff.basePricePerPerson * customModifier;
+      finalPrice += (basePersonPrice + baseSessionsPricePerRider) * ridersCount;
+
+      for (const assignment of finalBikeAssignments) {
+        const bike = availableBikes.find(b => b.id === assignment.bikeId);
+        if (bike) {
+          const bikeFee = baseSessionsPricePerRider * (bike.model.priceModifier - 1.0);
+          finalPrice += bikeFee;
+          if (assignment.insuranceSelected) {
+            finalPrice += bike.model.insurancePrice;
+          }
+        }
+        if (assignment.apparelSelected) {
+          finalPrice += 10.0;
+        }
       }
     }
 
@@ -339,14 +348,45 @@ export async function action({ request }: Route.ActionArgs) {
       return createdBooking;
     });
 
+    const url = new URL(request.url);
+    const requestHost = `${url.protocol}//${url.host}`;
+    await sendBookingCreatedEmail(booking.id, requestHost);
+    await sendBookingConfirmedEmail(booking.id, requestHost);
+
     return { success: "manual_booking_created", bookingId: booking.id };
+  }
+
+  if (intent === "confirm_booking") {
+    const bookingId = formData.get("bookingId")?.toString();
+    if (!bookingId) return { error: "Missing booking ID." };
+    await prisma.booking.update({
+      where: { id: bookingId },
+      data: { status: "CONFIRMED" }
+    });
+    const url = new URL(request.url);
+    const requestHost = `${url.protocol}//${url.host}`;
+    await sendBookingConfirmedEmail(bookingId, requestHost);
+    return { success: "booking_confirmed" };
+  }
+
+  if (intent === "cancel_booking") {
+    const bookingId = formData.get("bookingId")?.toString();
+    if (!bookingId) return { error: "Missing booking ID." };
+    await prisma.booking.update({
+      where: { id: bookingId },
+      data: { status: "CANCELLED" }
+    });
+    const url = new URL(request.url);
+    const requestHost = `${url.protocol}//${url.host}`;
+    await sendBookingCancelledEmail(bookingId, requestHost);
+    return { success: "booking_cancelled" };
   }
 
   return null;
 }
 
 export default function AdminCalendar() {
-  const { dayConfigs, bookings, bikes, bikeModels, users, timeSlots, locale } = useLoaderData<typeof loader>();
+  const { dayConfigs, bookings, bikes, bikeModels, users, timeSlots, tariffs, locale } = useLoaderData<typeof loader>();
   const actionData = useActionData() as { error?: string; success?: string; bookingId?: string } | undefined;
   const t = translations[locale as Locale];
 
@@ -379,6 +419,57 @@ export default function AdminCalendar() {
     pilotName: string;
     pilotEmail: string;
   }>>([]);
+  const [customCost, setCustomCost] = useState("");
+
+  const getEstimatedPrice = () => {
+    if (!selectedDate) return 0;
+    const dayConf = dayConfigs.find(dc => dc.date === selectedDate);
+    const customModifier = dayConf?.customPriceModifier || 1.0;
+    const parsedDate = new Date(selectedDate);
+    const dayOfWeek = parsedDate.getDay();
+    const tariff = tariffs.find(t => t.dayOfWeek === dayOfWeek);
+    if (!tariff) return 0;
+
+    const getSessionsBasePrice = (
+      sessions: number,
+      basePricePerSession: number,
+      discountThreshold: number,
+      discountThresholdPrice: number,
+      pricePerSessionAfterThreshold: number
+    ) => {
+      if (sessions < discountThreshold) {
+        return sessions * basePricePerSession;
+      }
+      return discountThresholdPrice + (sessions - discountThreshold) * pricePerSessionAfterThreshold;
+    };
+
+    let estPrice = 0;
+    const baseSessionsPricePerRider = getSessionsBasePrice(
+      newApptSessions,
+      tariff.basePricePerSession,
+      tariff.discountThreshold,
+      tariff.discountThresholdPrice,
+      tariff.pricePerSessionAfterThreshold
+    ) * customModifier;
+    const basePersonPrice = tariff.basePricePerPerson * customModifier;
+    estPrice += (basePersonPrice + baseSessionsPricePerRider) * newApptRiders;
+
+    newApptBikes.forEach(assign => {
+      const model = bikeModels.find(bm => bm.id === assign.modelId);
+      if (model) {
+        const bikeFee = baseSessionsPricePerRider * (model.priceModifier - 1.0);
+        estPrice += bikeFee;
+        if (assign.insuranceSelected) {
+          estPrice += model.insurancePrice;
+        }
+      }
+      if (assign.apparelSelected) {
+        estPrice += 10.0;
+      }
+    });
+
+    return estPrice;
+  };
 
   // Auto-fill client name if existing email matches
   useEffect(() => {
@@ -419,6 +510,7 @@ export default function AdminCalendar() {
       setNewApptRiders(1);
       setNewApptHours([]);
       setNewApptBikes([]);
+      setCustomCost("");
       alert(locale === "en" ? "Appointment successfully booked!" : "Appuntamento registrato con successo!");
     }
   }, [actionData, locale]);
@@ -644,9 +736,18 @@ export default function AdminCalendar() {
                     
                     <div className="space-y-1 w-full overflow-hidden">
                       {dayBookings.length > 0 && (
-                        <div className="bg-orange-600/10 border border-orange-500/20 text-orange-400 text-[8px] font-black uppercase px-1 py-0.5 rounded text-center truncate tracking-wide">
-                          {dayBookings.length} {locale === "en" ? "Bookings" : "Riserve"}
-                        </div>
+                        (() => {
+                          const hasPending = dayBookings.some(b => b.status === "PENDING");
+                          return (
+                            <div className={`border text-[8px] font-black uppercase px-1 py-0.5 rounded text-center truncate tracking-wide ${
+                              hasPending
+                                ? "bg-amber-600/10 border-amber-500/20 text-amber-400"
+                                : "bg-orange-600/10 border-orange-500/20 text-orange-400"
+                            }`}>
+                              {dayBookings.length} {locale === "en" ? (hasPending ? "Pending" : "Bookings") : (hasPending ? "In attesa" : "Riserve")}
+                            </div>
+                          );
+                        })()
                       )}
                       {dayConfig?.notes && !dayBookings.length && (
                         <div className="text-[7.5px] text-slate-500 italic truncate text-center" title={dayConfig.notes}>
@@ -903,6 +1004,52 @@ export default function AdminCalendar() {
                       <input type="hidden" name="bikesAssignment" value={JSON.stringify(newApptBikes)} />
                     </div>
 
+                    {/* Price Estimation and Custom Cost */}
+                    <div className="bg-slate-950 p-4.5 rounded-2xl border border-slate-850 space-y-4">
+                      <div className="flex justify-between items-center text-xs border-b border-slate-900 pb-2">
+                        <span className="font-bold text-slate-400 uppercase tracking-wide">
+                          {locale === "en" ? "Pricing Summary" : "Riepilogo Prezzi"}
+                        </span>
+                        <span className="text-slate-500 font-mono text-[9px] flex items-center space-x-1">
+                          <Euro className="h-3 w-3" />
+                          <span>EUR (€)</span>
+                        </span>
+                      </div>
+                      
+                      <div className="flex justify-between items-baseline py-1">
+                        <span className="text-xs text-slate-400">
+                          {locale === "en" ? "Calculated Standard Price:" : "Prezzo Standard Calcolato:"}
+                        </span>
+                        <span className="text-sm font-mono font-bold text-slate-400">
+                          €{getEstimatedPrice().toFixed(2)}
+                        </span>
+                      </div>
+
+                      <div className="space-y-1.5 pt-2 border-t border-slate-900">
+                        <label className="block text-[10px] uppercase text-slate-500 font-bold tracking-wider">
+                          {locale === "en" ? "Custom Cost Override (Optional)" : "Costo Personalizzato Override (Opzionale)"}
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            name="customCost"
+                            step="0.01"
+                            min="0"
+                            placeholder={locale === "en" ? `Use standard price (€${getEstimatedPrice().toFixed(2)})` : `Usa prezzo standard (€${getEstimatedPrice().toFixed(2)})`}
+                            value={customCost}
+                            onChange={(e) => setCustomCost(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-850 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 text-white rounded-xl py-2.5 px-3.5 outline-none text-xs font-mono"
+                          />
+                        </div>
+                        <p className="text-[10px] text-slate-500 leading-normal">
+                          {locale === "en" 
+                            ? "Leave empty to bill the customer the estimated standard price."
+                            : "Lascia vuoto per addebitare al cliente il prezzo standard stimato."
+                          }
+                        </p>
+                      </div>
+                    </div>
+
                     {/* Submit appointment action */}
                     <button
                       type="submit"
@@ -940,6 +1087,11 @@ export default function AdminCalendar() {
                               <div>
                                 <span className="block font-black text-white uppercase truncate max-w-40">{booking.user.name}</span>
                                 <span className="block text-[9px] text-slate-500 truncate max-w-40 font-mono mt-0.5">{booking.user.email}</span>
+                                {booking.status === "PENDING" && (
+                                  <span className="inline-block bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[8px] font-bold uppercase px-1.5 py-0.5 rounded mt-1">
+                                    {locale === "en" ? "Pending" : "In attesa"}
+                                  </span>
+                                )}
                               </div>
                               <span className="bg-slate-900 border border-slate-850 px-2 py-0.5 text-[9px] text-white font-mono rounded select-none shrink-0 font-extrabold uppercase">
                                 €{booking.totalPrice.toFixed(0)}
@@ -949,7 +1101,7 @@ export default function AdminCalendar() {
                             <div className="grid grid-cols-2 gap-2 text-[10px] font-mono border-t border-slate-900 pt-2.5 text-slate-400">
                               <span className="flex items-center space-x-1.5">
                                 <Users className="h-3.5 w-3.5 text-slate-500 shrink-0" />
-                                <span>{booking.peopleCount} Rider(s)</span>
+                                <span>{booking.peopleCount} {booking.peopleCount === 1 ? "Pilota" : "Piloti"}</span>
                               </span>
                               <span className="flex items-center space-x-1.5">
                                 <Clock className="h-3.5 w-3.5 text-slate-500 shrink-0" />
@@ -963,11 +1115,45 @@ export default function AdminCalendar() {
                                 <div key={bb.id} className="bg-slate-900/60 p-2 rounded border border-slate-900 flex justify-between items-center text-[10px] text-slate-300">
                                   <span>{index + 1}. {bb.pilotName}: {bb.bike.model.name}</span>
                                   {bb.insuranceSelected && (
-                                    <span className="bg-green-500/10 text-green-400 text-[8px] font-bold uppercase px-1 rounded">Ins</span>
+                                    <span className="bg-green-500/10 text-green-400 text-[8px] font-bold uppercase px-1 rounded">Ass.</span>
                                   )}
                                 </div>
                               ))}
                             </div>
+
+                            {booking.status === "PENDING" && (
+                              <div className="flex space-x-2 pt-2.5 border-t border-slate-900 mt-2.5">
+                                <Form method="post" className="inline w-full">
+                                  <input type="hidden" name="bookingId" value={booking.id} />
+                                  <input type="hidden" name="date" value={selectedDate} />
+                                  <input type="hidden" name="intent" value="confirm_booking" />
+                                  <button
+                                    type="submit"
+                                    disabled={isSubmitting}
+                                    className="w-full text-center text-[8.5px] font-black uppercase py-1.5 bg-green-950/20 hover:bg-green-600 border border-green-500/20 hover:border-transparent text-green-400 hover:text-white rounded transition-all cursor-pointer"
+                                  >
+                                    {locale === "en" ? "Confirm" : "Conferma"}
+                                  </button>
+                                </Form>
+                                <Form method="post" className="inline w-full">
+                                  <input type="hidden" name="bookingId" value={booking.id} />
+                                  <input type="hidden" name="date" value={selectedDate} />
+                                  <input type="hidden" name="intent" value="cancel_booking" />
+                                  <button
+                                    type="submit"
+                                    disabled={isSubmitting}
+                                    className="w-full text-center text-[8.5px] font-black uppercase py-1.5 bg-red-950/20 hover:bg-red-600 border border-red-500/20 hover:border-transparent text-red-400 hover:text-white rounded transition-all cursor-pointer"
+                                    onClick={(e) => {
+                                      if (!confirm(locale === "en" ? "Are you sure you want to cancel this booking?" : "Sei sicuro di voler annullare questa prenotazione?")) {
+                                        e.preventDefault();
+                                      }
+                                    }}
+                                  >
+                                    {locale === "en" ? "Cancel" : "Annulla"}
+                                  </button>
+                                </Form>
+                              </div>
+                            )}
 
                           </div>
                         ))}

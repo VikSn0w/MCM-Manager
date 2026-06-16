@@ -4,6 +4,7 @@ import type { Route } from "./+types/order";
 import { requireUserId, getUser } from "../utils/auth.server";
 import { prisma } from "../utils/db.server";
 import { getLocale } from "../utils/locale.server";
+import { sendBookingConfirmedEmail, sendBookingCancelledEmail } from "../utils/email.server";
 import { translations, type Locale } from "../utils/translations";
 import { 
   Calendar, 
@@ -173,6 +174,10 @@ export async function action({ params, request }: Route.ActionArgs) {
       data: { status: "CANCELLED" }
     });
 
+    const url = new URL(request.url);
+    const requestHost = `${url.protocol}//${url.host}`;
+    await sendBookingCancelledEmail(params.id!, requestHost);
+
     return { success: "Booking successfully cancelled." };
   }
 
@@ -181,6 +186,11 @@ export async function action({ params, request }: Route.ActionArgs) {
       where: { id: params.id },
       data: { status: "CONFIRMED" }
     });
+
+    const url = new URL(request.url);
+    const requestHost = `${url.protocol}//${url.host}`;
+    await sendBookingConfirmedEmail(params.id!, requestHost);
+
     return { success: "Booking successfully marked as confirmed." };
   }
 
@@ -437,9 +447,17 @@ export default function OrderDetails() {
                   <span className={`text-[10px] font-black uppercase tracking-widest px-4 py-2 border-l border-b rounded-bl-2xl font-mono block ${
                     isCancelled
                       ? "bg-red-950/60 text-red-400 border-red-500/20"
-                      : "bg-green-950/60 text-green-400 border-green-500/20"
+                      : booking.status === "PENDING"
+                        ? "bg-amber-950/60 text-amber-400 border-amber-500/20"
+                        : "bg-green-950/60 text-green-400 border-green-500/20"
                   }`}>
-                    {booking.status === "CONFIRMED" && locale === "it" ? "CONFERMATO" : booking.status === "CANCELLED" && locale === "it" ? "ANNULLATO" : booking.status}
+                    {booking.status === "CONFIRMED" && locale === "it" 
+                      ? "CONFERMATO" 
+                      : booking.status === "CANCELLED" && locale === "it" 
+                        ? "ANNULLATO" 
+                        : booking.status === "PENDING" && locale === "it"
+                          ? "IN ATTESA"
+                          : booking.status}
                   </span>
                 </div>
 
@@ -675,16 +693,18 @@ export default function OrderDetails() {
                   </Form>
                 )}
 
-                {/* Admin controls to confirm/activate status if cancelled */}
-                {isAdmin && isCancelled && (
+                {/* Admin controls to confirm/activate status if pending or cancelled */}
+                {isAdmin && (isCancelled || booking.status === "PENDING") && (
                   <Form method="post">
                     <input type="hidden" name="intent" value="confirm" />
                     <button
                       type="submit"
                       disabled={isSubmitting}
-                      className="w-full text-center bg-green-950/20 hover:bg-green-600 border border-green-500/20 hover:border-transparent text-green-400 hover:text-white text-xs font-bold uppercase py-3.5 rounded-xl transition-all cursor-pointer"
+                      className="w-full text-center bg-green-950/20 hover:bg-green-650 border border-green-500/20 hover:border-transparent text-green-400 hover:text-white text-xs font-bold uppercase py-3.5 rounded-xl transition-all cursor-pointer"
                     >
-                      {locale === "en" ? "Re-Confirm Booking" : "Ripristina Prenotazione"}
+                      {booking.status === "PENDING"
+                        ? (locale === "en" ? "Confirm Booking" : "Conferma Prenotazione")
+                        : (locale === "en" ? "Re-Confirm Booking" : "Ripristina Prenotazione")}
                     </button>
                   </Form>
                 )}

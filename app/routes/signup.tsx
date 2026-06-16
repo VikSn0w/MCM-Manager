@@ -81,20 +81,6 @@ export default function Signup() {
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden font-sans text-white">
-      {/* Language Switcher in top corner */}
-      <div className="absolute top-6 right-6 z-20">
-        <Form method="post" action="/locale" className="inline-flex">
-          <input type="hidden" name="redirectTo" value={currentPath} />
-          <button 
-            type="submit" 
-            name="locale" 
-            value={locale === "en" ? "it" : "en"}
-            className="text-xs font-extrabold uppercase text-slate-400 hover:text-orange-500 border border-slate-800 hover:border-orange-500/25 bg-slate-900/40 rounded-xl px-3 py-2 transition-all flex items-center space-x-1 outline-none cursor-pointer"
-          >
-            <span>{locale === "en" ? "🇮🇹 IT" : "🇬🇧 EN"}</span>
-          </button>
-        </Form>
-      </div>
 
       {/* Background decoration */}
       <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-orange-950/20 via-slate-950 to-slate-950 pointer-events-none" />

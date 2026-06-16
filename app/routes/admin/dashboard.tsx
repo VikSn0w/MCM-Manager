@@ -66,9 +66,14 @@ export async function loader({ request }: Route.LoaderArgs) {
   // Latest 5 bookings
   const latestBookings = bookings.slice(0, 5);
 
+  const pendingBookingsCount = await prisma.booking.count({
+    where: { status: "PENDING" }
+  });
+
   return {
     totalRevenue,
     bookingsCount: bookings.length,
+    pendingBookingsCount,
     bikesCount: bikes.length,
     customersCount,
     availableBikes,
@@ -93,6 +98,7 @@ export default function AdminDashboard() {
     weekdayBookingsCount,
     weekdayRevenue,
     latestBookings,
+    pendingBookingsCount,
     locale
   } = useLoaderData<typeof loader>();
 
@@ -116,6 +122,32 @@ export default function AdminDashboard() {
           {locale === "en" ? "Paddock Overview" : "Stato del Paddock"}
         </h1>
       </div>
+
+      {/* Action alert banner for pending bookings */}
+      {pendingBookingsCount > 0 && (
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-5 flex items-start space-x-3 text-xs text-amber-400">
+          <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
+          <div className="flex-1 sm:flex sm:justify-between sm:items-center gap-4">
+            <div>
+              <span className="block font-bold uppercase">
+                {locale === "en" ? "Action Required" : "Azione Richiesta"}
+              </span>
+              <p className="mt-1 leading-normal font-light">
+                {locale === "en"
+                  ? `There are ${pendingBookingsCount} bookings awaiting confirmation.`
+                  : `Ci sono ${pendingBookingsCount} prenotazioni in attesa di conferma.`}
+              </p>
+            </div>
+            <Link
+              to="/admin/bookings?status=PENDING"
+              className="mt-3 sm:mt-0 inline-flex items-center space-x-1.5 bg-amber-600 text-white font-extrabold uppercase px-4 py-2.5 rounded-xl hover:bg-amber-500 shadow-xl transition-all text-[10px] shrink-0"
+            >
+              <span>{locale === "en" ? "Review Bookings" : "Esamina Ora"}</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* Main Aggregates Widgets Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -141,7 +173,9 @@ export default function AdminDashboard() {
               {locale === "en" ? "Confirmed Sessions" : "Sessioni Confermate"}
             </span>
             <span className="block text-3xl font-black text-white">{bookingsCount}</span>
-            <span className="block text-[10px] text-slate-400 uppercase font-mono">Active bookings</span>
+            <span className="block text-[10px] text-slate-400 uppercase font-mono">
+              {locale === "en" ? "Active bookings" : "Prenotazioni attive"}
+            </span>
           </div>
           <div className="h-12 w-12 bg-orange-500/10 border border-orange-500/20 rounded-xl flex items-center justify-center text-orange-400">
             <Receipt className="h-6 w-6" />
@@ -156,7 +190,7 @@ export default function AdminDashboard() {
             </span>
             <span className="block text-3xl font-black text-white">{bikesCount}</span>
             <span className="block text-[10px] text-slate-400 uppercase font-mono">
-              <span className="text-green-400">{availableBikes} OK</span> / <span className="text-red-400">{maintenanceBikes} repair</span>
+              <span className="text-green-400">{availableBikes} OK</span> / <span className="text-red-400">{maintenanceBikes} {locale === "en" ? "repair" : "in riparazione"}</span>
             </span>
           </div>
           <div className="h-12 w-12 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-center justify-center text-blue-400">
@@ -171,7 +205,9 @@ export default function AdminDashboard() {
               {locale === "en" ? "Active Racers" : "Piloti Attivi"}
             </span>
             <span className="block text-3xl font-black text-white">{customersCount}</span>
-            <span className="block text-[10px] text-slate-400 uppercase font-mono">Registered riders</span>
+            <span className="block text-[10px] text-slate-400 uppercase font-mono">
+              {locale === "en" ? "Registered riders" : "Piloti registrati"}
+            </span>
           </div>
           <div className="h-12 w-12 bg-purple-500/10 border border-purple-500/20 rounded-xl flex items-center justify-center text-purple-400">
             <Users className="h-6 w-6" />
@@ -196,7 +232,7 @@ export default function AdminDashboard() {
             </div>
             <span className="flex items-center space-x-1 text-xs text-green-400 bg-green-500/10 border border-green-500/20 rounded-full px-2.5 py-1 font-bold uppercase tracking-wider">
               <TrendingUp className="h-3.5 w-3.5" />
-              <span>Real-Time</span>
+              <span>{locale === "en" ? "Real-Time" : "Tempo Reale"}</span>
             </span>
           </div>
 
@@ -286,7 +322,7 @@ export default function AdminDashboard() {
                   <span className="h-2 w-2 rounded-full bg-green-500 animate-ping" />
                   <span>{locale === "en" ? "Ready / Available" : "Pronta / Disponibile"}</span>
                 </div>
-                <span className="text-sm font-black text-white">{availableBikes} bikes</span>
+                <span className="text-sm font-black text-white">{availableBikes} {locale === "en" ? "bikes" : "moto"}</span>
               </div>
 
               <div className="flex justify-between items-center p-3.5 bg-slate-950/80 border border-slate-900 rounded-xl">
@@ -294,7 +330,7 @@ export default function AdminDashboard() {
                   <span className="h-2 w-2 rounded-full bg-red-500" />
                   <span>{locale === "en" ? "Maintenance Queue" : "In Manutenzione"}</span>
                 </div>
-                <span className="text-sm font-black text-orange-400">{maintenanceBikes} bikes</span>
+                <span className="text-sm font-black text-orange-400">{maintenanceBikes} {locale === "en" ? "bikes" : "moto"}</span>
               </div>
 
               <div className="flex justify-between items-center p-3.5 bg-slate-950/80 border border-slate-900 rounded-xl">
@@ -302,7 +338,7 @@ export default function AdminDashboard() {
                   <span className="h-2 w-2 rounded-full bg-slate-700" />
                   <span>{locale === "en" ? "Retired from Paddock" : "Ritirata / Deposta"}</span>
                 </div>
-                <span className="text-sm font-black text-slate-500">{retiredBikes} bikes</span>
+                <span className="text-sm font-black text-slate-500">{retiredBikes} {locale === "en" ? "bikes" : "moto"}</span>
               </div>
             </div>
           </div>
@@ -347,11 +383,11 @@ export default function AdminDashboard() {
               <thead className="bg-slate-950 text-slate-500 uppercase font-bold tracking-widest border-b border-slate-900">
                 <tr>
                   <th className="px-6 py-4">{locale === "en" ? "Racer / Customer" : "Pilota / Cliente"}</th>
-                  <th className="px-6 py-4">Date</th>
+                  <th className="px-6 py-4">{locale === "en" ? "Date" : "Data"}</th>
                   <th className="px-6 py-4">{locale === "en" ? "Hours" : "Orari"}</th>
                   <th className="px-6 py-4">{locale === "en" ? "Allocated Fleet" : "Ohvale GP Assegnate"}</th>
                   <th className="px-6 py-4">{locale === "en" ? "Grand Total" : "Totale Corrisposto"}</th>
-                  <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4">{locale === "en" ? "Status" : "Stato"}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-850/60">
@@ -380,8 +416,20 @@ export default function AdminDashboard() {
                     </td>
                     <td className="px-6 py-4 font-extrabold text-white">€{b.totalPrice.toFixed(2)}</td>
                     <td className="px-6 py-4">
-                      <span className="bg-green-950/60 text-green-400 border border-green-500/10 text-[9px] font-extrabold px-2 py-0.5 rounded uppercase tracking-wider">
-                        {b.status === "CONFIRMED" && locale === "it" ? "CONFERMATO" : b.status}
+                      <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded border uppercase tracking-wider ${
+                        b.status === "PENDING"
+                          ? "bg-amber-950/60 text-amber-400 border-amber-500/10"
+                          : b.status === "CANCELLED"
+                            ? "bg-red-950/60 text-red-400 border-red-500/10"
+                            : "bg-green-950/60 text-green-400 border-green-500/10"
+                      }`}>
+                        {b.status === "CONFIRMED" && locale === "it" 
+                          ? "CONFERMATO" 
+                          : b.status === "CANCELLED" && locale === "it" 
+                            ? "ANNULLATO" 
+                            : b.status === "PENDING" && locale === "it"
+                              ? "IN ATTESA"
+                              : b.status}
                       </span>
                     </td>
                   </tr>

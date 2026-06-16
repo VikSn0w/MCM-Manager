@@ -3,6 +3,7 @@ import type { Route } from "./+types/dashboard";
 import { requireUserId, getUser } from "../utils/auth.server";
 import { prisma } from "../utils/db.server";
 import { getLocale } from "../utils/locale.server";
+import { sendBookingCancelledEmail } from "../utils/email.server";
 import { translations, type Locale } from "../utils/translations";
 import { 
   Calendar, 
@@ -90,6 +91,10 @@ export async function action({ request }: Route.ActionArgs) {
       data: { status: "CANCELLED" },
     });
 
+    const url = new URL(request.url);
+    const requestHost = `${url.protocol}//${url.host}`;
+    await sendBookingCancelledEmail(bookingId, requestHost);
+
     return { success: "Booking successfully cancelled." };
   }
 
@@ -143,19 +148,6 @@ export default function Dashboard() {
                   {t.backoffice}
                 </Link>
               )}
-
-              {/* Language Switcher */}
-              <Form method="post" action="/locale" className="inline-flex">
-                <input type="hidden" name="redirectTo" value={currentPath} />
-                <button 
-                  type="submit" 
-                  name="locale" 
-                  value={locale === "en" ? "it" : "en"}
-                  className="text-xs font-extrabold uppercase text-slate-400 hover:text-orange-500 border border-slate-800 hover:border-orange-500/25 bg-slate-900/40 rounded-xl px-3 py-2 transition-all flex items-center space-x-1 outline-none cursor-pointer"
-                >
-                  <span>{locale === "en" ? "🇮🇹 IT" : "🇬🇧 EN"}</span>
-                </button>
-              </Form>
 
               <Form method="post" action="/logout">
                 <button
@@ -278,9 +270,17 @@ export default function Dashboard() {
                         <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded border tracking-widest ${
                           isCancelled
                             ? "bg-red-950/60 text-red-400 border-red-500/10"
-                            : "bg-green-950/60 text-green-400 border-green-500/10"
+                            : booking.status === "PENDING"
+                              ? "bg-amber-950/60 text-amber-400 border-amber-500/10"
+                              : "bg-green-950/60 text-green-400 border-green-500/10"
                         }`}>
-                          {booking.status === "CONFIRMED" && locale === "it" ? "CONFERMATO" : booking.status === "CANCELLED" && locale === "it" ? "ANNULLATO" : booking.status}
+                          {booking.status === "CONFIRMED" && locale === "it" 
+                            ? "CONFERMATO" 
+                            : booking.status === "CANCELLED" && locale === "it" 
+                              ? "ANNULLATO" 
+                              : booking.status === "PENDING" && locale === "it"
+                                ? "IN ATTESA"
+                                : booking.status}
                         </span>
                       </div>
                     </div>
@@ -366,7 +366,7 @@ export default function Dashboard() {
                           {locale === "en" ? "View Pass / PDF" : "Vedi Pass / PDF"}
                         </Link>
 
-                        {isConfirmed && isFutureDate && booking.userId === user.id && (
+                        {(isConfirmed || booking.status === "PENDING") && isFutureDate && booking.userId === user.id && (
                           <Form method="post">
                             <input type="hidden" name="bookingId" value={booking.id} />
                             <input type="hidden" name="intent" value="cancel" />

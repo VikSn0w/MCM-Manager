@@ -178,19 +178,6 @@ export default function Home() {
                   </Link>
                 </div>
               )}
-
-              {/* Language Switcher */}
-              <Form method="post" action="/locale" className="inline-flex">
-                <input type="hidden" name="redirectTo" value={currentPath} />
-                <button 
-                  type="submit" 
-                  name="locale" 
-                  value={locale === "en" ? "it" : "en"}
-                  className="text-xs font-extrabold uppercase text-slate-400 hover:text-orange-500 border border-slate-800 hover:border-orange-500/25 bg-slate-900/40 rounded-xl px-3 py-2 transition-all flex items-center space-x-1 outline-none"
-                >
-                  <span>{locale === "en" ? "🇮🇹 IT" : "🇬🇧 EN"}</span>
-                </button>
-              </Form>
             </div>
           </div>
         </div>

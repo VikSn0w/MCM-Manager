@@ -28,21 +28,22 @@ export async function loader({ request }: Route.LoaderArgs) {
   // Quick header stats
   const bikesCount = await prisma.bike.count({});
   const activeBookingsCount = await prisma.booking.count({ where: { status: "CONFIRMED" } });
+  const pendingBookingsCount = await prisma.booking.count({ where: { status: "PENDING" } });
   const dayConfigsCount = await prisma.dayConfig.count({});
 
   const companyConfig = await prisma.companyConfig.findUnique({
     where: { id: "single-config" }
   }) || {
-    companyName: "Leasio Paddock Rentals",
+    companyName: "MCM Racing School",
     logoUrl: "/images/ohvale_gp_one_1780331510373.png",
-    circuitName: "Autodromo di Franciacorta"
+    circuitName: "Circuito Internazionale del Volturno"
   };
 
-  return { adminUser, bikesCount, activeBookingsCount, dayConfigsCount, companyConfig, locale };
+  return { adminUser, bikesCount, activeBookingsCount, pendingBookingsCount, dayConfigsCount, companyConfig, locale };
 }
 
 export default function AdminLayout() {
-  const { adminUser, bikesCount, activeBookingsCount, dayConfigsCount, companyConfig, locale } = useLoaderData<typeof loader>();
+  const { adminUser, bikesCount, activeBookingsCount, pendingBookingsCount, dayConfigsCount, companyConfig, locale } = useLoaderData<typeof loader>();
   const t = translations[locale as Locale];
 
   const location = useLocation();
@@ -177,36 +178,33 @@ export default function AdminLayout() {
           {/* Quick Metrics Header Row */}
           <div className="flex flex-wrap items-center gap-6 text-xs text-slate-400 font-bold uppercase tracking-wider font-mono">
             
-            {/* Language Switcher in Admin top bar */}
-            <Form method="post" action="/locale" className="inline-flex border-r border-slate-800 pr-6">
-              <input type="hidden" name="redirectTo" value={currentPathWithSearch} />
-              <button 
-                type="submit" 
-                name="locale" 
-                value={locale === "en" ? "it" : "en"}
-                className="text-[10px] font-extrabold uppercase text-slate-400 hover:text-orange-500 border border-slate-800 hover:border-orange-500/25 bg-slate-950 rounded-lg px-2.5 py-1.5 transition-all flex items-center space-x-1 outline-none cursor-pointer"
-              >
-                <span>{locale === "en" ? "🇮🇹 IT" : "🇬🇧 EN"}</span>
-              </button>
-            </Form>
-
             <div className="flex items-center space-x-2 border-r border-slate-800 pr-6">
               <Activity className="h-4.5 w-4.5 text-orange-500 shrink-0" />
               <div>
                 <span className="block text-[9px] text-slate-500 uppercase">
                   {locale === "en" ? "Fleet Size" : "Dim. Flotta"}
                 </span>
-                <span className="text-sm font-black text-white mt-0.5">{bikesCount} Ohvales</span>
+                <span className="text-sm font-black text-white mt-0.5">{bikesCount} {locale === "en" ? "Ohvales" : "Moto"}</span>
               </div>
             </div>
             
+            <div className="flex items-center space-x-2 border-r border-slate-800 pr-6">
+              <Bell className="h-4.5 w-4.5 text-amber-500 shrink-0" />
+              <div>
+                <span className="block text-[9px] text-slate-500 uppercase">
+                  {locale === "en" ? "Pending" : "In attesa"}
+                </span>
+                <span className="text-sm font-black text-white mt-0.5">{pendingBookingsCount} {locale === "en" ? "Bookings" : "Prenotazioni"}</span>
+              </div>
+            </div>
+
             <div className="flex items-center space-x-2 border-r border-slate-800 pr-6">
               <Receipt className="h-4.5 w-4.5 text-green-500 shrink-0" />
               <div>
                 <span className="block text-[9px] text-slate-500 uppercase">
                   {locale === "en" ? "Confirmed" : "Confermati"}
                 </span>
-                <span className="text-sm font-black text-white mt-0.5">{activeBookingsCount} Bookings</span>
+                <span className="text-sm font-black text-white mt-0.5">{activeBookingsCount} {locale === "en" ? "Bookings" : "Prenotazioni"}</span>
               </div>
             </div>
 
@@ -216,7 +214,7 @@ export default function AdminLayout() {
                 <span className="block text-[9px] text-slate-500 uppercase">
                   {locale === "en" ? "Overrides" : "Eccezioni"}
                 </span>
-                <span className="text-sm font-black text-white mt-0.5">{dayConfigsCount} Dates</span>
+                <span className="text-sm font-black text-white mt-0.5">{dayConfigsCount} {locale === "en" ? "Dates" : "Date"}</span>
               </div>
             </div>
 

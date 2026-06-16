@@ -4,6 +4,7 @@ import type { Route } from "./+types/book";
 import { requireUserId, getUser } from "../utils/auth.server";
 import { prisma } from "../utils/db.server";
 import { getLocale } from "../utils/locale.server";
+import { sendBookingCreatedEmail } from "../utils/email.server";
 import { translations, type Locale } from "../utils/translations";
 import { 
   Calendar as CalendarIcon, 
@@ -72,7 +73,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       circuitName: "Autodromo di Franciacorta",
     }),
     prisma.booking.findMany({
-      where: { status: "CONFIRMED" },
+      where: { status: { in: ["CONFIRMED", "PENDING"] } },
       include: {
         bikes: {
           include: {
@@ -178,7 +179,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   // 2. Capacity checks for each selected time slot on that date
   const bookingsOnDate = await prisma.booking.findMany({
-    where: { date: dateStr, status: "CONFIRMED" },
+    where: { date: dateStr, status: { in: ["CONFIRMED", "PENDING"] } },
   });
 
   for (const hour of selectedHours) {
@@ -202,7 +203,7 @@ export async function action({ request }: Route.ActionArgs) {
     where: {
       booking: {
         date: dateStr,
-        status: "CONFIRMED",
+        status: { in: ["CONFIRMED", "PENDING"] },
       },
     },
     select: { bikeId: true },
@@ -359,7 +360,7 @@ export async function action({ request }: Route.ActionArgs) {
         peopleCount: ridersCount,
         hours: selectedHours.join(", "),
         totalPrice: finalPrice,
-        status: "CONFIRMED",
+        status: "PENDING",
         bookingType,
         championshipType: bookingType === "CHAMPIONSHIP" ? championshipType : null,
         bikeSelectionMode,
@@ -410,6 +411,10 @@ export async function action({ request }: Route.ActionArgs) {
 
     return createdBooking;
   });
+
+  const url = new URL(request.url);
+  const requestHost = `${url.protocol}//${url.host}`;
+  await sendBookingCreatedEmail(booking.id, requestHost);
 
   return { success: true, bookingId: booking.id, totalPrice: finalPrice };
 }
@@ -892,19 +897,6 @@ export default function Book() {
           <span className="text-xs uppercase text-slate-500 font-bold tracking-widest font-mono hidden sm:inline">
             Rider: <strong className="text-white">{user?.name}</strong>
           </span>
-
-          {/* Language Switcher in top corner */}
-          <Form method="post" action="/locale" className="inline-flex">
-            <input type="hidden" name="redirectTo" value={currentPath} />
-            <button 
-              type="submit" 
-              name="locale" 
-              value={locale === "en" ? "it" : "en"}
-              className="text-xs font-extrabold uppercase text-slate-400 hover:text-orange-500 border border-slate-800 hover:border-orange-500/25 bg-slate-900/40 rounded-xl px-3 py-2 transition-all flex items-center space-x-1 outline-none cursor-pointer"
-            >
-              <span>{locale === "en" ? "🇮🇹 IT" : "🇬🇧 EN"}</span>
-            </button>
-          </Form>
         </div>
       </div>
 

@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Form, Link, useLoaderData, useNavigation } from "react-router";
+import { Form, Link, useLoaderData, useNavigation, useSearchParams } from "react-router";
 import type { Route } from "./+types/bookings";
 import { requireAdmin } from "../../utils/auth.server";
 import { prisma } from "../../utils/db.server";
 import { getLocale } from "../../utils/locale.server";
+import { sendBookingConfirmedEmail, sendBookingCancelledEmail } from "../../utils/email.server";
 import { translations, type Locale } from "../../utils/translations";
 import { 
   Receipt, 
@@ -58,7 +59,21 @@ export async function action({ request }: Route.ActionArgs) {
       where: { id: bookingId },
       data: { status: "CANCELLED" },
     });
+    const url = new URL(request.url);
+    const requestHost = `${url.protocol}//${url.host}`;
+    await sendBookingCancelledEmail(bookingId, requestHost);
     return { success: "Reservation successfully cancelled." };
+  }
+
+  if (intent === "confirm") {
+    await prisma.booking.update({
+      where: { id: bookingId },
+      data: { status: "CONFIRMED" },
+    });
+    const url = new URL(request.url);
+    const requestHost = `${url.protocol}//${url.host}`;
+    await sendBookingConfirmedEmail(bookingId, requestHost);
+    return { success: "Reservation successfully confirmed." };
   }
 
   return null;
@@ -71,8 +86,10 @@ export default function AdminBookings() {
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
 
+  const [searchParams] = useSearchParams();
+  const initialStatus = searchParams.get("status") || "ALL";
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [statusFilter, setStatusFilter] = useState(initialStatus);
 
   // Filtering
   const filteredBookings = bookings.filter((b) => {
@@ -121,8 +138,13 @@ export default function AdminBookings() {
 
         {/* Status Filters */}
         <div className="flex items-center space-x-2 w-full md:w-auto overflow-x-auto">
-          {["ALL", "CONFIRMED", "CANCELLED"].map((status) => {
-            const statusLabel = status === "ALL" && locale === "it" ? "TUTTE" : status === "CONFIRMED" && locale === "it" ? "CONFERMATE" : status === "CANCELLED" && locale === "it" ? "ANNULLATE" : status;
+          {["ALL", "PENDING", "CONFIRMED", "CANCELLED"].map((status) => {
+            const statusLabel = 
+              status === "ALL" && locale === "it" ? "TUTTE" 
+              : status === "PENDING" && locale === "it" ? "IN ATTESA"
+              : status === "CONFIRMED" && locale === "it" ? "CONFERMATE" 
+              : status === "CANCELLED" && locale === "it" ? "ANNULLATE" 
+              : status;
             return (
               <button
                 key={status}
@@ -214,10 +236,12 @@ export default function AdminBookings() {
                         <div className="space-y-0.5">
                           <span className="block font-bold text-white">
                             {booking.bookingType === "CHAMPIONSHIP"
-                              ? `${booking.sessionsCount} Sessions (GP)`
-                              : `${booking.sessionsCount} Session(s)`}
+                              ? `${booking.sessionsCount} Turni (GP)`
+                              : `${booking.sessionsCount} Turni`}
                           </span>
-                          <span className="block text-[10px] text-slate-500 uppercase">{booking.peopleCount} Rider(s)</span>
+                          <span className="block text-[10px] text-slate-500 uppercase">
+                            {booking.peopleCount} {booking.peopleCount === 1 ? "Pilota" : "Piloti"}
+                          </span>
                         </div>
                       </td>
 
@@ -260,21 +284,42 @@ export default function AdminBookings() {
                         <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded border tracking-wider ${
                           isCancelled
                             ? "bg-red-950/60 text-red-400 border-red-500/10"
-                            : "bg-green-950/60 text-green-400 border-green-500/10"
+                            : booking.status === "PENDING"
+                              ? "bg-amber-950/60 text-amber-400 border-amber-500/10"
+                              : "bg-green-950/60 text-green-400 border-green-500/10"
                         }`}>
-                          {booking.status === "CONFIRMED" && locale === "it" ? "CONFERMATO" : booking.status === "CANCELLED" && locale === "it" ? "ANNULLATO" : booking.status}
+                          {booking.status === "CONFIRMED" && locale === "it" 
+                            ? "CONFERMATO" 
+                            : booking.status === "CANCELLED" && locale === "it" 
+                              ? "ANNULLATO" 
+                              : booking.status === "PENDING" && locale === "it"
+                                ? "IN ATTESA"
+                                : booking.status}
                         </span>
                       </td>
 
                       {/* Actions */}
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-6 py-4 text-right flex items-center justify-end space-x-2">
                         <Link
                           to={`/order/${booking.id}`}
-                          className="text-[9px] font-extrabold uppercase px-3 py-1.5 bg-slate-950 hover:bg-slate-900 border border-slate-800 text-slate-300 hover:text-white rounded-lg transition-all inline-block mr-2 text-center"
+                          className="text-[9px] font-extrabold uppercase px-3 py-1.5 bg-slate-950 hover:bg-slate-900 border border-slate-800 text-slate-300 hover:text-white rounded-lg transition-all text-center"
                         >
                           {locale === "en" ? "Manage" : "Gestisci"}
                         </Link>
-                        {isConfirmed && isFutureDate && (
+                        {booking.status === "PENDING" && isFutureDate && (
+                          <Form method="post" className="inline">
+                            <input type="hidden" name="bookingId" value={booking.id} />
+                            <input type="hidden" name="intent" value="confirm" />
+                            <button
+                              type="submit"
+                              disabled={isSubmitting}
+                              className="text-[9px] font-extrabold uppercase px-3 py-1.5 bg-green-950/20 hover:bg-green-650 border border-green-500/20 hover:border-transparent text-green-400 hover:text-white rounded-lg transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+                            >
+                              {locale === "en" ? "Confirm" : "Conferma"}
+                            </button>
+                          </Form>
+                        )}
+                        {(isConfirmed || booking.status === "PENDING") && isFutureDate && (
                           <Form method="post" className="inline">
                             <input type="hidden" name="bookingId" value={booking.id} />
                             <input type="hidden" name="intent" value="cancel" />
@@ -288,7 +333,7 @@ export default function AdminBookings() {
                                 }
                               }}
                             >
-                              {locale === "en" ? "Cancel Booking" : "Annulla Prenotazione"}
+                              {locale === "en" ? "Cancel" : "Annulla"}
                             </button>
                           </Form>
                         )}
