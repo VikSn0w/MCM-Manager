@@ -9,35 +9,53 @@ datasource db {
 }
 
 model User {
-  id            String        @id @default(cuid())
-  email         String        @unique
-  password      String
-  name          String
-  role          String        @default("CUSTOMER") // "CUSTOMER" | "ADMIN"
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  bookings      Booking[]
-  pilotBookings BookingBike[] @relation("PilotBookings")
+  id                  String               @id @default(cuid())
+  email               String               @unique
+  password            String
+  name                String
+  role                String               @default("CUSTOMER") // "CUSTOMER" | "ADMIN"
+  // Sessions issued before this instant are rejected, so a password reset
+  // logs out anyone holding a stolen cookie.
+  passwordChangedAt   DateTime             @default(now())
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  bookings            Booking[]
+  pilotBookings       BookingBike[]        @relation("PilotBookings")
+  passwordResetTokens PasswordResetToken[]
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // SHA-256 of the token that was emailed; the raw token is never stored, so a
+  // database leak cannot be replayed to take over accounts.
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
 
 model BikeModel {
   id                String   @id @default(cuid())
-  name              String   // e.g. "Ohvale GP-0 160 4S Evo"
+  name              String // e.g. "Ohvale GP-0 160 4S Evo"
   builder           String   @default("Ohvale")
-  model             String   // e.g. "GP-0 160 4S Evo"
+  model             String // e.g. "GP-0 160 4S Evo"
   displacement      Int
   priceModifier     Float    @default(1.0)
   insurancePrice    Float    @default(25.0)
   insuranceCoverage Float    @default(250.0)
   imageUrl          String?
   bgColor           String?
-  info              String?  // specs or general model info
+  info              String? // specs or general model info
   hp                Float?
   hpRpm             Int?
   torque            Float?
   torqueRpm         Int?
   usage             String   @default("BOTH") // "RENTAL" | "ACADEMY" | "BOTH"
-  gearbox           String?  // e.g. "Automatic", "4-Speed", "5-Speed"
+  gearbox           String? // e.g. "Automatic", "4-Speed", "5-Speed"
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   bikes             Bike[]
@@ -91,71 +109,133 @@ model TimeSlot {
 }
 
 model Booking {
-  id                String        @id @default(cuid())
-  userId            String
-  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  date              String // "YYYY-MM-DD"
-  sessionsCount     Int
-  peopleCount       Int
-  hours             String // Comma separated, e.g. "09:00, 11:00"
-  totalPrice        Float
-  status            String        @default("CONFIRMED") // "CONFIRMED" | "CANCELLED"
-  bookingType       String        @default("STANDARD") // "STANDARD" | "CHAMPIONSHIP"
-  championshipType  String? // "GP_SPRINT" | "GP_PLUS"
-  bikeSelectionMode String        @default("MIXED") // "MIXED" | "FIXED"
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-  bikes             BookingBike[]
+  id                 String        @id @default(cuid())
+  userId             String
+  user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date               String // "YYYY-MM-DD"
+  sessionsCount      Int
+  peopleCount        Int
+  hours              String // Comma separated, e.g. "09:00, 11:00"
+  totalPrice         Float
+  status             String        @default("PENDING") // "PENDING" | "CONFIRMED" | "CANCELLED"
+  bookingType        String        @default("STANDARD") // "STANDARD" | "CHAMPIONSHIP"
+  championshipType   String? // "GP_SPRINT" | "GP_PLUS"
+  bikeSelectionMode  String        @default("MIXED") // "MIXED" | "FIXED" — which models are allowed
+  // The assignment mode in force when this booking was taken, so the back office
+  // can tell which bookings still want a human to review the allocated bikes.
+  bikeAssignmentMode String        @default("AUTO") // "AUTO" | "MANUAL"
+  // Set once staff have confirmed or changed the bikes. Null under MANUAL means
+  // the booking is still sitting in the review queue.
+  bikesReviewedAt    DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  bikes              BookingBike[]
+
+  // Availability checks filter on date together with status; the dashboard and
+  // the order pass look bookings up by owner.
+  @@index([date, status])
+  @@index([status])
+  @@index([userId])
 }
 
 model BookingBike {
-  id                String  @id @default(cuid())
-  bookingId         String
-  booking           Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  bikeId            String
-  bike              Bike    @relation(fields: [bikeId], references: [id], onDelete: Restrict)
-  insuranceSelected Boolean @default(false)
-  apparelSelected   Boolean @default(false)
-  pilotName         String?
-  pilotUserId       String?
-  pilotUser         User?   @relation("PilotBookings", fields: [pilotUserId], references: [id], onDelete: SetNull)
+  id                  String             @id @default(cuid())
+  bookingId           String
+  booking             Booking            @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  bikeId              String
+  bike                Bike               @relation(fields: [bikeId], references: [id], onDelete: Restrict)
+  insuranceSelected   Boolean            @default(false)
+  apparelSelected     Boolean            @default(false)
+  pilotName           String?
+  pilotUserId         String?
+  pilotUser           User?              @relation("PilotBookings", fields: [pilotUserId], references: [id], onDelete: SetNull)
+  /// Championship placement. Null for ordinary track bookings.
+  championshipGroupId String?
+  championshipGroup   ChampionshipGroup? @relation(fields: [championshipGroupId], references: [id], onDelete: SetNull)
+  /// The level the rider declared when booking, kept even if staff move them.
+  declaredLevel       String?
+  /// Grid slot within the heat, 1-based, as printed on the assignment sheet.
+  gridPosition        Int?
 
-  @@unique([bookingId, bikeId])
+  // Scoped by heat: one booking may legitimately use the same bike twice when
+  // its riders race in different championship groups, but never twice in one
+  // heat. Postgres treats NULLs as distinct, so for ordinary bookings (null
+  // group) the no-duplicate rule is upheld by the allocator, which never hands
+  // the same bike to two riders sharing an availability scope.
+  @@unique([bookingId, bikeId, championshipGroupId])
+  @@index([championshipGroupId])
+  // "is this bike taken?" and "which bookings am I a pilot on?"
+  @@index([bikeId])
+  @@index([pilotUserId])
 }
 
 model Championship {
-  id            String   @id @default(cuid())
+  id            String              @id @default(cuid())
   name          String // e.g. "GP Sprint", "GP PLUS"
   description   String // e.g. "10 mins free laps, 10 mins qualify, 8-lap race"
   price         Float // Price per racer
-  minRacers     Int      @default(5)
-  sessionsCount Int      @default(3) // sessions it occupies
-  isAvailable   Boolean  @default(true)
+  minRacers     Int                 @default(5)
+  sessionsCount Int                 @default(3) // sessions it occupies
+  isAvailable   Boolean             @default(true)
   fixedDate     String? // optional: "YYYY-MM-DD" for scheduled championships
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  /// How much of fixedDate this event reserves. FULL_DAY closes the track to
+  /// ordinary bookings; TIME_WINDOW only blocks the slots in lockedHours.
+  /// Ignored entirely when fixedDate is null — an unscheduled format locks nothing.
+  lockMode      String              @default("FULL_DAY") // "FULL_DAY" | "TIME_WINDOW"
+  /// Comma-separated slot times reserved when lockMode is TIME_WINDOW, e.g. "09:00, 11:00".
+  lockedHours   String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  groups        ChampionshipGroup[]
+}
+
+/// A skill bracket within one championship, e.g. "Rookie" or "Gruppo Misto".
+/// Each group races as its own heat, so the whole fleet is available again in
+/// every group — the same bike numbers repeat down each column of the grid sheet.
+model ChampionshipGroup {
+  id             String        @id @default(cuid())
+  championshipId String
+  championship   Championship  @relation(fields: [championshipId], references: [id], onDelete: Cascade)
+  name           String // "Rookie" | "Esperti" | "Veloci" | "Gruppo Misto" | anything the school wants
+  description    String? // e.g. "First time on an Ohvale"
+  /// Riders per heat. Cannot usefully exceed the number of rentable bikes.
+  capacity       Int           @default(7)
+  /// Optional heat time, e.g. "09:00". Groups share the fleet, so they run in turn.
+  timeSlot       String?
+  /// Display order on the grid sheet and in the booking form.
+  sortOrder      Int           @default(0)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  entries        BookingBike[]
+
+  @@unique([championshipId, name])
+  @@index([championshipId])
 }
 
 model CompanyConfig {
-  id            String   @id @default("single-config")
-  companyName   String   @default("LeasioGP Paddock")
-  logoUrl       String   @default("/images/logo.png")
-  circuitName   String   @default("Adria International Raceway")
-  googleMapsUrl String?
-  updatedAt     DateTime @updatedAt
+  id                 String   @id @default("single-config")
+  companyName        String   @default("LeasioGP Paddock")
+  logoUrl            String   @default("/images/logo.png")
+  circuitName        String   @default("Adria International Raceway")
+  googleMapsUrl      String?
+  // Who picks the individual bike (e.g. "Stoner 27") once a customer has chosen
+  // a model. AUTO leaves it to the system; MANUAL means the back office reviews
+  // and reassigns. Customers never choose either way.
+  bikeAssignmentMode String   @default("AUTO") // "AUTO" | "MANUAL"
+  updatedAt          DateTime @updatedAt
 }
 
 model Lesson {
   id            String     @id @default(cuid())
-  title         String     // English title
-  titleIt       String     // Italian title
-  description   String     // English description
-  descriptionIt String     // Italian description
-  duration      String     // English duration (e.g., "2 Hours")
-  durationIt    String     // Italian duration (e.g., "2 Ore")
-  time          String     // English timing (e.g., "09:00 - 11:00" or "Custom")
-  timeIt        String     // Italian timing (e.g., "09:00 - 11:00" or "Su Misura")
-  cost          Float      // cost in Euros
+  title         String // English title
+  titleIt       String // Italian title
+  description   String // English description
+  descriptionIt String // Italian description
+  duration      String // English duration (e.g., "2 Hours")
+  durationIt    String // Italian duration (e.g., "2 Ore")
+  time          String // English timing (e.g., "09:00 - 11:00" or "Custom")
+  timeIt        String // Italian timing (e.g., "09:00 - 11:00" or "Su Misura")
+  cost          Float // cost in Euros
   isAvailable   Boolean    @default(true)
   bikeModelId   String?
   bikeModel     BikeModel? @relation(fields: [bikeModelId], references: [id], onDelete: SetNull)

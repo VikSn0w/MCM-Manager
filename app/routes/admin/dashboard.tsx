@@ -24,25 +24,33 @@ export async function loader({ request }: Route.LoaderArgs) {
   // 1. Core aggregates
   const bookings = await prisma.booking.findMany({
     where: { status: "CONFIRMED" },
-    include: {
-      user: {
-        select: { name: true, email: true }
-      },
+    // Only the fields the aggregates and the recent-bookings table read. The
+    // previous version pulled every bike and bike model of every booking.
+    select: {
+      id: true,
+      date: true,
+      hours: true,
+      totalPrice: true,
+      peopleCount: true,
+      sessionsCount: true,
+      status: true,
+      bookingType: true,
+      createdAt: true,
+      user: { select: { name: true, email: true } },
       bikes: {
-        include: {
-          bike: {
-            include: {
-              model: true
-            }
-          }
-        }
-      }
+        select: {
+          insuranceSelected: true,
+          bike: { select: { model: { select: { name: true } } } },
+        },
+      },
     },
     orderBy: { createdAt: "desc" },
   });
 
-  const bikes = await prisma.bike.findMany({});
-  const customersCount = await prisma.user.count({ where: { role: "CUSTOMER" } });
+  const [bikes, customersCount] = await Promise.all([
+    prisma.bike.findMany({}),
+    prisma.user.count({ where: { role: "CUSTOMER" } }),
+  ]);
 
   // 2. Revenue calculation
   const totalRevenue = bookings.reduce((sum, b) => sum + b.totalPrice, 0);

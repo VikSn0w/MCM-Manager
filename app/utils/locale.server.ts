@@ -8,5 +8,6 @@ export const localeCookie = createCookie("_leasio_locale", {
 });
 
 export async function getLocale(request: Request): Promise<"en" | "it"> {
-  return "it";
+  const value = await localeCookie.parse(request.headers.get("Cookie"));
+  return value === "en" || value === "it" ? value : "it";
 }

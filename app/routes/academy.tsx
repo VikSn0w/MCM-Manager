@@ -26,7 +26,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     prisma.companyConfig.findUnique({
       where: { id: "single-config" }
     }).then(conf => conf || {
-      companyName: "Leasio Paddock Rentals",
+      companyName: "MCM Racing School",
       logoUrl: "/images/ohvale_gp_one_1780331510373.png",
       circuitName: "Autodromo di Franciacorta",
       googleMapsUrl: ""
@@ -42,7 +42,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export function meta({ data }: Route.MetaArgs) {
-  const companyName = data?.companyConfig?.companyName || "Leasio Paddock Rentals";
+  const companyName = data?.companyConfig?.companyName || "MCM Racing School";
   const circuitName = data?.companyConfig?.circuitName || "Autodromo di Franciacorta";
   return [
     { title: `Racing Academy - ${companyName}` },
@@ -82,7 +82,7 @@ export default function Academy() {
               <img 
                 id="nav-logo-fallback"
                 src="/logosmall.png"
-                alt="Leasio Logo"
+                alt={companyConfig.companyName}
                 className={`${companyConfig.logoUrl ? "hidden" : ""} h-8 w-auto object-contain`}
               />
               <span className="text-xl font-black tracking-tighter uppercase text-white">
@@ -409,7 +409,7 @@ export default function Academy() {
               </a>
               <span className="text-slate-800">|</span>
               <span>{locale === "en" ? "Powered by" : "Powered by"}</span>
-              <img src="/logoleasio.png" alt="Leasio Logo" className="h-4.5 object-contain" />
+              <img src="/logoleasio.png" alt={companyConfig.companyName} className="h-4.5 object-contain" />
             </div>
           </div>
           <div className="flex space-x-6 text-slate-500">

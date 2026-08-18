@@ -1,8 +1,29 @@
 import { Resend } from "resend";
 import { prisma } from "./db.server";
 
+/**
+ * Where back-office notifications go when no ADMIN account exists — otherwise
+ * a booking or cancellation would be silently swallowed. Override with
+ * FALLBACK_ADMIN_EMAIL rather than editing this default.
+ */
+const fallbackAdminEmail = process.env.FALLBACK_ADMIN_EMAIL || "vittoriopicone30@gmail.com";
+
 const resendApiKey = process.env.RESEND_API_KEY;
 const resend = resendApiKey ? new Resend(resendApiKey) : null;
+
+/**
+ * Escapes values that originate from user input before they are interpolated
+ * into email HTML. Pilot names in particular are attacker-controlled and land
+ * in the back office inbox.
+ */
+function esc(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
 interface SendMailOptions {
   to: string | string[];
@@ -12,10 +33,12 @@ interface SendMailOptions {
 
 async function sendMail({ to, subject, html }: SendMailOptions) {
   const recipients = Array.isArray(to) ? to : [to];
-  const sender = "onboarding@resend.dev"; // Default Resend sandbox sender
+  // onboarding@resend.dev is the Resend sandbox sender: it only delivers to the
+  // account owner. Set MAIL_FROM to an address on a domain verified in Resend.
+  const sender = process.env.MAIL_FROM || "onboarding@resend.dev";
 
   console.log(`[EMAIL MAIL] Tentativo di invio email:
-    Da: Leasio - MCM Racing School <${sender}>
+    Da: MCM Racing School <${sender}>
     A: ${recipients.join(", ")}
     Oggetto: ${subject}`);
 
@@ -26,7 +49,7 @@ async function sendMail({ to, subject, html }: SendMailOptions) {
 
   try {
     const { data, error } = await resend.emails.send({
-      from: `Leasio - MCM Racing School <${sender}>`,
+      from: `MCM Racing School <${sender}>`,
       to: recipients,
       subject,
       html,
@@ -70,7 +93,6 @@ export async function sendBookingCreatedEmail(bookingId: string, requestHost: st
   }
 
   const orderUrl = `${requestHost}/order/${booking.id}`;
-  const qrCodeSrc = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(orderUrl)}`;
 
   // Email per il cliente
   const clientHtml = `
@@ -89,11 +111,11 @@ export async function sendBookingCreatedEmail(bookingId: string, requestHost: st
           </tr>
           <tr>
             <td style="padding: 6px 0; font-weight: bold; color: #94a3b8;">Data Uscita Pista:</td>
-            <td style="padding: 6px 0; text-align: right; font-weight: bold; color: #ffffff;">${booking.date}</td>
+            <td style="padding: 6px 0; text-align: right; font-weight: bold; color: #ffffff;">${esc(booking.date)}</td>
           </tr>
           <tr>
             <td style="padding: 6px 0; font-weight: bold; color: #94a3b8;">Orari Sessioni:</td>
-            <td style="padding: 6px 0; text-align: right; color: #ea580c; font-weight: bold;">${booking.hours}</td>
+            <td style="padding: 6px 0; text-align: right; color: #ea580c; font-weight: bold;">${esc(booking.hours)}</td>
           </tr>
           <tr>
             <td style="padding: 6px 0; font-weight: bold; color: #94a3b8;">Numero Piloti:</td>
@@ -115,7 +137,7 @@ export async function sendBookingCreatedEmail(bookingId: string, requestHost: st
         <div style="font-size: 13px; color: #cbd5e1; line-height: 1.6;">
           ${booking.bikes.map((bb, idx) => `
             <div style="padding: 10px 0; border-bottom: ${idx === booking.bikes.length - 1 ? 'none' : '1px solid #1e293b'}; display: flex; justify-content: space-between; align-items: center;">
-              <span><strong>${idx + 1}. ${bb.pilotName || 'Pilota'}</strong>: ${bb.bike.model.name}</span>
+              <span><strong>${idx + 1}. ${esc(bb.pilotName || 'Pilota')}</strong>: ${esc(bb.bike.model.name)}</span>
               ${bb.insuranceSelected ? '<span style="background-color: rgba(34, 197, 94, 0.1); color: #22c55e; font-weight: bold; font-size: 10px; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(34, 197, 94, 0.2);">Copertura Crash OK</span>' : '<span style="color: #64748b; font-size: 11px;">Nessuna Assicurazione</span>'}
             </div>
           `).join('')}
@@ -123,8 +145,7 @@ export async function sendBookingCreatedEmail(bookingId: string, requestHost: st
       </div>
 
       <div style="text-align: center; margin: 30px 0; background-color: #0f172a; padding: 24px; border-radius: 16px; border: 1px solid #334155;">
-        <p style="color: #94a3b8; font-size: 13px; margin: 0 0 15px 0;">QR Code ufficiale da presentare per la verifica al box:</p>
-        <img src="${qrCodeSrc}" alt="QR Code Verifica" style="border: 6px solid #ffffff; border-radius: 12px; width: 160px; height: 160px; display: block; margin: 0 auto;" />
+        <p style="color: #94a3b8; font-size: 13px; margin: 0 0 15px 0;">Apri il tuo Paddock Pass qui sotto: contiene il QR Code ufficiale da presentare per la verifica al box.</p>
       </div>
 
       <div style="text-align: center; margin-top: 30px;">
@@ -135,13 +156,13 @@ export async function sendBookingCreatedEmail(bookingId: string, requestHost: st
 
   await sendMail({
     to: booking.user.email,
-    subject: `Richiesta Prenotazione Ricevuta - Leasio - MCM Racing School [#${booking.id.substring(0, 8)}]`,
+    subject: `Richiesta Prenotazione Ricevuta - MCM Racing School [#${booking.id.substring(0, 8)}]`,
     html: clientHtml,
   });
 
   // Query admins
   const admins = await prisma.user.findMany({ where: { role: "ADMIN" } });
-  const adminEmails = admins.length > 0 ? admins.map(a => a.email) : ["admin@leasio.com"];
+  const adminEmails = admins.length > 0 ? admins.map(a => a.email) : [fallbackAdminEmail];
 
   // Email per il back office
   const backofficeHtml = `
@@ -156,7 +177,7 @@ export async function sendBookingCreatedEmail(bookingId: string, requestHost: st
         <table style="width: 100%; border-collapse: collapse; font-size: 13px; color: #cbd5e1; line-height: 1.6;">
           <tr>
             <td style="padding: 6px 0; font-weight: bold; color: #94a3b8;">Cliente / Pilota:</td>
-            <td style="padding: 6px 0; text-align: right; font-weight: bold; color: #ffffff;">${booking.user.name} (${booking.user.email})</td>
+            <td style="padding: 6px 0; text-align: right; font-weight: bold; color: #ffffff;">${esc(booking.user.name)} (${esc(booking.user.email)})</td>
           </tr>
           <tr>
             <td style="padding: 6px 0; font-weight: bold; color: #94a3b8;">ID Riserva:</td>
@@ -164,11 +185,11 @@ export async function sendBookingCreatedEmail(bookingId: string, requestHost: st
           </tr>
           <tr>
             <td style="padding: 6px 0; font-weight: bold; color: #94a3b8;">Data Pista:</td>
-            <td style="padding: 6px 0; text-align: right; font-weight: bold; color: #ffffff;">${booking.date}</td>
+            <td style="padding: 6px 0; text-align: right; font-weight: bold; color: #ffffff;">${esc(booking.date)}</td>
           </tr>
           <tr>
             <td style="padding: 6px 0; font-weight: bold; color: #94a3b8;">Turni Orari:</td>
-            <td style="padding: 6px 0; text-align: right; color: #ea580c; font-weight: bold;">${booking.hours}</td>
+            <td style="padding: 6px 0; text-align: right; color: #ea580c; font-weight: bold;">${esc(booking.hours)}</td>
           </tr>
           <tr>
             <td style="padding: 6px 0; font-weight: bold; color: #94a3b8;">Numero Piloti:</td>
@@ -220,7 +241,6 @@ export async function sendBookingConfirmedEmail(bookingId: string, requestHost: 
   }
 
   const orderUrl = `${requestHost}/order/${booking.id}`;
-  const qrCodeSrc = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(orderUrl)}`;
 
   const clientHtml = `
     <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #0b1329; color: #f8fafc; padding: 40px 20px; border-radius: 24px; max-width: 600px; margin: 0 auto; border: 1px solid #1e293b;">
@@ -238,11 +258,11 @@ export async function sendBookingConfirmedEmail(bookingId: string, requestHost: 
           </tr>
           <tr>
             <td style="padding: 6px 0; font-weight: bold; color: #94a3b8;">Data Uscita Pista:</td>
-            <td style="padding: 6px 0; text-align: right; font-weight: bold; color: #ffffff;">${booking.date}</td>
+            <td style="padding: 6px 0; text-align: right; font-weight: bold; color: #ffffff;">${esc(booking.date)}</td>
           </tr>
           <tr>
             <td style="padding: 6px 0; font-weight: bold; color: #94a3b8;">Orari Sessioni:</td>
-            <td style="padding: 6px 0; text-align: right; color: #ea580c; font-weight: bold;">${booking.hours}</td>
+            <td style="padding: 6px 0; text-align: right; color: #ea580c; font-weight: bold;">${esc(booking.hours)}</td>
           </tr>
           <tr>
             <td style="padding: 12px 0 0 0; font-weight: bold; color: #94a3b8; font-size: 14px; border-top: 1px dashed #334155;">Prezzo Totale (IVA incl.):</td>
@@ -252,8 +272,7 @@ export async function sendBookingConfirmedEmail(bookingId: string, requestHost: 
       </div>
 
       <div style="text-align: center; margin: 30px 0; background-color: #0f172a; padding: 24px; border-radius: 16px; border: 1px solid #334155;">
-        <p style="color: #94a3b8; font-size: 13px; margin: 0 0 15px 0;">Presenta questo QR Code ai box per accedere alla pista:</p>
-        <img src="${qrCodeSrc}" alt="QR Code Verifica" style="border: 6px solid #ffffff; border-radius: 12px; width: 160px; height: 160px; display: block; margin: 0 auto;" />
+        <p style="color: #94a3b8; font-size: 13px; margin: 0 0 15px 0;">Apri il tuo Paddock Pass qui sotto: contiene il QR Code da presentare ai box per accedere alla pista.</p>
       </div>
 
       <div style="text-align: center; margin-top: 30px;">
@@ -264,7 +283,7 @@ export async function sendBookingConfirmedEmail(bookingId: string, requestHost: 
 
   await sendMail({
     to: booking.user.email,
-    subject: `PRENOTAZIONE CONFERMATA - Leasio - MCM Racing School [#${booking.id.substring(0, 8)}]`,
+    subject: `PRENOTAZIONE CONFERMATA - MCM Racing School [#${booking.id.substring(0, 8)}]`,
     html: clientHtml,
   });
 }
@@ -311,11 +330,11 @@ export async function sendBookingCancelledEmail(bookingId: string, requestHost: 
           </tr>
           <tr>
             <td style="padding: 6px 0; font-weight: bold; color: #94a3b8;">Data Originaria Pista:</td>
-            <td style="padding: 6px 0; text-align: right;">${booking.date}</td>
+            <td style="padding: 6px 0; text-align: right;">${esc(booking.date)}</td>
           </tr>
           <tr>
             <td style="padding: 6px 0; font-weight: bold; color: #94a3b8;">Orari Sessioni:</td>
-            <td style="padding: 6px 0; text-align: right;">${booking.hours}</td>
+            <td style="padding: 6px 0; text-align: right;">${esc(booking.hours)}</td>
           </tr>
         </table>
       </div>
@@ -326,13 +345,13 @@ export async function sendBookingCancelledEmail(bookingId: string, requestHost: 
 
   await sendMail({
     to: booking.user.email,
-    subject: `Prenotazione Annullata - Leasio - MCM Racing School [#${booking.id.substring(0, 8)}]`,
+    subject: `Prenotazione Annullata - MCM Racing School [#${booking.id.substring(0, 8)}]`,
     html: clientHtml,
   });
 
   // Query admins
   const admins = await prisma.user.findMany({ where: { role: "ADMIN" } });
-  const adminEmails = admins.length > 0 ? admins.map(a => a.email) : ["admin@leasio.com"];
+  const adminEmails = admins.length > 0 ? admins.map(a => a.email) : [fallbackAdminEmail];
 
   // Email per il back office
   const backofficeHtml = `
@@ -347,7 +366,7 @@ export async function sendBookingCancelledEmail(bookingId: string, requestHost: 
         <table style="width: 100%; border-collapse: collapse; font-size: 13px; color: #cbd5e1; line-height: 1.6;">
           <tr>
             <td style="padding: 6px 0; font-weight: bold; color: #94a3b8;">Cliente:</td>
-            <td style="padding: 6px 0; text-align: right; font-weight: bold; color: #ffffff;">${booking.user.name} (${booking.user.email})</td>
+            <td style="padding: 6px 0; text-align: right; font-weight: bold; color: #ffffff;">${esc(booking.user.name)} (${esc(booking.user.email)})</td>
           </tr>
           <tr>
             <td style="padding: 6px 0; font-weight: bold; color: #94a3b8;">ID Completo:</td>
@@ -355,11 +374,11 @@ export async function sendBookingCancelledEmail(bookingId: string, requestHost: 
           </tr>
           <tr>
             <td style="padding: 6px 0; font-weight: bold; color: #94a3b8;">Data Uscita Pista:</td>
-            <td style="padding: 6px 0; text-align: right;">${booking.date}</td>
+            <td style="padding: 6px 0; text-align: right;">${esc(booking.date)}</td>
           </tr>
           <tr>
             <td style="padding: 6px 0; font-weight: bold; color: #94a3b8;">Orari Sessioni:</td>
-            <td style="padding: 6px 0; text-align: right;">${booking.hours}</td>
+            <td style="padding: 6px 0; text-align: right;">${esc(booking.hours)}</td>
           </tr>
         </table>
       </div>
@@ -370,5 +389,53 @@ export async function sendBookingCancelledEmail(bookingId: string, requestHost: 
     to: adminEmails,
     subject: `[NOTIFICA] Prenotazione Annullata - ${booking.user.name}`,
     html: backofficeHtml,
+  });
+}
+
+/**
+ * Invia il link di reimpostazione password.
+ *
+ * Il token grezzo arriva solo qui e finisce esclusivamente nel corpo dell'email:
+ * non viene mai registrato nei log né salvato in chiaro sul database.
+ */
+export async function sendPasswordResetEmail(
+  email: string,
+  name: string,
+  resetUrl: string,
+  ttlMinutes: number
+) {
+  const clientHtml = `
+    <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #0b1329; color: #f8fafc; padding: 40px 20px; border-radius: 24px; max-width: 600px; margin: 0 auto; border: 1px solid #1e293b;">
+      <div style="text-align: center; margin-bottom: 30px;">
+        <h1 style="color: #ea580c; text-transform: uppercase; margin: 0 0 10px 0; font-size: 28px; font-weight: 900; letter-spacing: 1px;">Reimposta la Password</h1>
+        <p style="color: #94a3b8; font-size: 14px; margin: 0;">Ciao ${esc(name)}, abbiamo ricevuto una richiesta di reimpostazione password per il tuo profilo pilota.</p>
+      </div>
+
+      <div style="background-color: #0f172a; padding: 24px; border-radius: 16px; margin-bottom: 24px; border: 1px solid #334155;">
+        <p style="color: #cbd5e1; font-size: 13px; line-height: 1.6; margin: 0;">
+          Premi il pulsante qui sotto per scegliere una nuova password. Il link è valido per
+          <strong style="color: #ffffff;">${ttlMinutes} minuti</strong> e può essere usato una sola volta.
+        </p>
+      </div>
+
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${resetUrl}" style="background-color: #ea580c; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 12px; font-weight: bold; font-size: 14px; text-transform: uppercase; display: inline-block; box-shadow: 0 4px 12px rgba(234, 88, 12, 0.25);">Reimposta Password</a>
+      </div>
+
+      <div style="background-color: #0f172a; padding: 16px; border-radius: 12px; border: 1px solid #334155;">
+        <p style="color: #64748b; font-size: 11px; margin: 0 0 6px 0;">Se il pulsante non funziona, copia questo indirizzo nel browser:</p>
+        <p style="color: #94a3b8; font-size: 11px; font-family: monospace; word-break: break-all; margin: 0;">${esc(resetUrl)}</p>
+      </div>
+
+      <p style="color: #64748b; font-size: 12px; text-align: center; margin-top: 24px; line-height: 1.5;">
+        Non hai richiesto tu la reimpostazione? Puoi ignorare questa email: la tua password resta invariata.
+      </p>
+    </div>
+  `;
+
+  await sendMail({
+    to: email,
+    subject: "Reimposta la tua password - MCM Racing School",
+    html: clientHtml,
   });
 }

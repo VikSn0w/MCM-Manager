@@ -1,11 +1,13 @@
 import { useState } from "react";
-import { Form, Link, useLoaderData, useNavigation, useSearchParams } from "react-router";
+import { Form, Link, useActionData, useLoaderData, useNavigation, useSearchParams } from "react-router";
 import type { Route } from "./+types/bookings";
 import { requireAdmin } from "../../utils/auth.server";
 import { prisma } from "../../utils/db.server";
 import { getLocale } from "../../utils/locale.server";
 import { sendBookingConfirmedEmail, sendBookingCancelledEmail } from "../../utils/email.server";
 import { translations, type Locale } from "../../utils/translations";
+import { isTodayOrFuture } from "../../utils/dates";
+import { bikeDisplayName } from "../../utils/bike";
 import { 
   Receipt, 
   Search, 
@@ -16,32 +18,75 @@ import {
   ShieldCheck, 
   XCircle, 
   CheckCircle,
-  AlertTriangle
+  AlertTriangle,
+  Bike as BikeIcon,
+  Wrench
 } from "lucide-react";
 
 export async function loader({ request }: Route.LoaderArgs) {
   await requireAdmin(request);
   const locale = await getLocale(request);
 
-  const bookings = await prisma.booking.findMany({
-    include: {
-      user: {
-        select: { name: true, email: true }
+  // All three are independent, so one round trip rather than two.
+  const [bookings, fleet, config] = await Promise.all([
+    prisma.booking.findMany({
+      // Only the columns the table and the reassign control read.
+      select: {
+        id: true,
+        date: true,
+        hours: true,
+        status: true,
+        totalPrice: true,
+        peopleCount: true,
+        sessionsCount: true,
+        bookingType: true,
+        championshipType: true,
+        bikeAssignmentMode: true,
+        bikeSelectionMode: true,
+        bikesReviewedAt: true,
+        createdAt: true,
+        user: { select: { name: true, email: true } },
+        bikes: {
+          select: {
+            id: true,
+            bikeId: true,
+            insuranceSelected: true,
+            apparelSelected: true,
+            pilotName: true,
+            bike: {
+              select: {
+                id: true,
+                alias: true,
+                raceNumber: true,
+                modelId: true,
+                model: { select: { name: true, model: true } },
+              },
+            },
+          },
+        },
       },
-      bikes: {
-        include: {
-          bike: {
-            include: {
-              model: true
-            }
-          }
-        }
-      }
-    },
-    orderBy: { date: "desc" },
-  });
+      orderBy: { date: "desc" },
+    }),
+    prisma.bike.findMany({
+      where: { status: "AVAILABLE" },
+      select: {
+        id: true,
+        alias: true,
+        raceNumber: true,
+        modelId: true,
+        model: { select: { id: true, name: true, model: true } },
+      },
+      orderBy: [{ raceNumber: "asc" }, { alias: "asc" }],
+    }),
+    prisma.companyConfig.findUnique({
+      where: { id: "single-config" },
+      select: { bikeAssignmentMode: true },
+    }),
+  ]);
 
-  return { bookings, locale };
+  const bikeAssignmentMode = config?.bikeAssignmentMode === "MANUAL" ? "MANUAL" : "AUTO";
+
+  return { bookings, locale, fleet, bikeAssignmentMode };
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -65,6 +110,75 @@ export async function action({ request }: Route.ActionArgs) {
     return { success: "Reservation successfully cancelled." };
   }
 
+  if (intent === "reassignBike") {
+    const bookingBikeId = formData.get("bookingBikeId")?.toString();
+    const newBikeId = formData.get("newBikeId")?.toString();
+
+    if (!bookingBikeId || !newBikeId) {
+      return { error: "Missing bike reassignment details." };
+    }
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        const current = await tx.bookingBike.findUnique({
+          where: { id: bookingBikeId },
+          include: { booking: true, bike: true },
+        });
+
+        if (!current) throw new Error("That rider slot no longer exists.");
+        if (current.bookingId !== bookingId) throw new Error("That rider slot belongs to a different booking.");
+        if (current.bikeId === newBikeId) return; // nothing to do
+
+        const replacement = await tx.bike.findUnique({ where: { id: newBikeId } });
+        if (!replacement) throw new Error("That bike is not in the fleet.");
+        if (replacement.status !== "AVAILABLE") throw new Error("That bike is not available for rental.");
+
+        // Same model only: price was computed from the model's modifier and
+        // insurance rate, so swapping across models would invalidate the total.
+        if (replacement.modelId !== current.bike.modelId) {
+          throw new Error("Pick a bike of the same model, or the booking price would no longer match.");
+        }
+
+        // The replacement must be free on this booking's date.
+        const clash = await tx.bookingBike.findFirst({
+          where: {
+            bikeId: newBikeId,
+            id: { not: bookingBikeId },
+            booking: {
+              date: current.booking.date,
+              status: { in: ["CONFIRMED", "PENDING"] },
+            },
+          },
+        });
+        if (clash) throw new Error("That bike is already assigned on this date.");
+
+        await tx.bookingBike.update({
+          where: { id: bookingBikeId },
+          data: { bikeId: newBikeId },
+        });
+        await tx.booking.update({
+          where: { id: bookingId },
+          data: { bikesReviewedAt: new Date() },
+        });
+      }, { isolationLevel: "Serializable" });
+    } catch (err: any) {
+      if (typeof err === "object" && err !== null && err.code === "P2034") {
+        return { error: "Someone changed this booking at the same time. Reload and try again." };
+      }
+      return { error: err?.message || "Could not reassign that bike." };
+    }
+
+    return { success: "Bike reassigned." };
+  }
+
+  if (intent === "markReviewed") {
+    await prisma.booking.update({
+      where: { id: bookingId },
+      data: { bikesReviewedAt: new Date() },
+    });
+    return { success: "Bike allocation confirmed." };
+  }
+
   if (intent === "confirm") {
     await prisma.booking.update({
       where: { id: bookingId },
@@ -80,8 +194,43 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function AdminBookings() {
-  const { bookings, locale } = useLoaderData<typeof loader>();
+  const { bookings, locale, fleet, bikeAssignmentMode } = useLoaderData<typeof loader>();
+  const actionData = useActionData() as { error?: string; success?: string } | undefined;
   const t = translations[locale as Locale];
+
+  const isManualMode = bikeAssignmentMode === "MANUAL";
+
+  const pendingReviewCount = bookings.filter(
+    (b) => b.status !== "CANCELLED" && b.bikeAssignmentMode === "MANUAL" && !b.bikesReviewedAt
+  ).length;
+
+  /**
+   * Bikes that could take this rider's place: same model, free on the booking's
+   * date, and not already used by another rider on this same booking. The
+   * currently assigned bike is always included so the select can show it.
+   */
+  const getSwapCandidates = (
+    bookingId: string,
+    bookingDate: string,
+    currentBikeId: string,
+    currentModelId: string
+  ) => {
+    const occupied = new Set<string>();
+    bookings.forEach((b) => {
+      if (b.date !== bookingDate) return;
+      if (b.status === "CANCELLED") return;
+      b.bikes.forEach((bb) => {
+        if (b.id === bookingId && bb.bikeId === currentBikeId) return;
+        occupied.add(bb.bikeId);
+      });
+    });
+
+    return fleet.filter(
+      (bike) =>
+        bike.modelId === currentModelId &&
+        (bike.id === currentBikeId || !occupied.has(bike.id))
+    );
+  };
 
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
@@ -118,6 +267,31 @@ export default function AdminBookings() {
           </h1>
         </div>
       </div>
+
+      {actionData?.error && (
+        <div className="bg-red-950/40 border border-red-500/30 rounded-2xl p-4 flex items-start space-x-3 text-red-200 text-sm">
+          <AlertTriangle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+          <p>{actionData.error}</p>
+        </div>
+      )}
+
+      {actionData?.success && (
+        <div className="bg-green-950/40 border border-green-500/30 rounded-2xl p-4 flex items-start space-x-3 text-green-200 text-sm">
+          <CheckCircle className="h-5 w-5 text-green-500 shrink-0 mt-0.5" />
+          <p>{actionData.success}</p>
+        </div>
+      )}
+
+      {isManualMode && pendingReviewCount > 0 && (
+        <div className="bg-amber-950/30 border border-amber-500/30 rounded-2xl p-4 flex items-start space-x-3 text-amber-200 text-sm">
+          <BikeIcon className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+          <p>
+            {locale === "en"
+              ? `Manual bike assignment is on. ${pendingReviewCount} booking(s) still need their bikes reviewed.`
+              : `Assegnazione moto manuale attiva. ${pendingReviewCount} prenotazione/i attendono la verifica delle moto.`}
+          </p>
+        </div>
+      )}
 
       {/* Filter and Search Bar */}
       <div className="bg-slate-900/60 border border-slate-850 p-5 rounded-2xl flex flex-col md:flex-row justify-between items-center gap-4 shadow-xl">
@@ -194,7 +368,7 @@ export default function AdminBookings() {
                 {filteredBookings.map((booking) => {
                   const isCancelled = booking.status === "CANCELLED";
                   const isConfirmed = booking.status === "CONFIRMED";
-                  const isFutureDate = new Date(booking.date) >= new Date();
+                  const isFutureDate = isTodayOrFuture(booking.date);
 
                   return (
                     <tr 
@@ -252,10 +426,12 @@ export default function AdminBookings() {
                       <td className="px-6 py-4">
                         <div className="flex flex-col gap-1.5 max-w-xs">
                           {booking.bikes.map((bb, idx) => (
-                            <div key={idx} className="bg-slate-950 text-slate-300 border border-slate-900 text-[10px] px-2 py-1.5 rounded font-medium flex justify-between items-center gap-2">
+                            <div key={bb.id} className="bg-slate-950 text-slate-300 border border-slate-900 text-[10px] px-2 py-1.5 rounded font-medium space-y-1.5">
+                             <div className="flex justify-between items-center gap-2">
                               <span className="truncate flex items-center space-x-1">
                                 <Flag className="h-3 w-3 text-orange-500 shrink-0" />
-                                <span className="truncate">{bb.bike.model.name}</span>
+                                <span className="truncate font-bold text-white">{bikeDisplayName(bb.bike)}</span>
+                                <span className="truncate text-slate-500">{bb.bike.model.name}</span>
                               </span>
                               <div className="flex items-center gap-1 shrink-0">
                                 {bb.insuranceSelected ? (
@@ -271,8 +447,58 @@ export default function AdminBookings() {
                                   </span>
                                 )}
                               </div>
+                             </div>
+
+                             {!isCancelled && (() => {
+                               const candidates = getSwapCandidates(booking.id, booking.date, bb.bikeId, bb.bike.modelId);
+                               if (candidates.length <= 1) return null;
+                               return (
+                                 <Form method="post" className="flex items-center gap-1">
+                                   <input type="hidden" name="intent" value="reassignBike" />
+                                   <input type="hidden" name="bookingId" value={booking.id} />
+                                   <input type="hidden" name="bookingBikeId" value={bb.id} />
+                                   <Wrench className="h-3 w-3 text-slate-600 shrink-0" />
+                                   <select
+                                     name="newBikeId"
+                                     defaultValue={bb.bikeId}
+                                     disabled={isSubmitting}
+                                     onChange={(e) => e.currentTarget.form?.requestSubmit()}
+                                     className="w-full bg-slate-900 border border-slate-800 text-[10px] text-slate-200 rounded px-1.5 py-1 outline-none focus:border-orange-500 cursor-pointer disabled:opacity-50"
+                                     title={locale === "en" ? "Reassign this rider's bike" : "Riassegna la moto di questo pilota"}
+                                   >
+                                     {candidates.map((bike) => (
+                                       <option key={bike.id} value={bike.id}>
+                                         {bikeDisplayName(bike)}
+                                       </option>
+                                     ))}
+                                   </select>
+                                 </Form>
+                               );
+                             })()}
                             </div>
                           ))}
+
+                          {isManualMode && !isCancelled && (
+                            booking.bikesReviewedAt ? (
+                              <span className="text-[9px] text-green-500 uppercase font-bold flex items-center gap-1">
+                                <CheckCircle className="h-3 w-3" />
+                                {locale === "en" ? "Bikes reviewed" : "Moto verificate"}
+                              </span>
+                            ) : (
+                              <Form method="post">
+                                <input type="hidden" name="intent" value="markReviewed" />
+                                <input type="hidden" name="bookingId" value={booking.id} />
+                                <button
+                                  type="submit"
+                                  disabled={isSubmitting}
+                                  className="w-full text-[9px] font-extrabold uppercase px-2 py-1.5 bg-amber-950/30 hover:bg-amber-600 border border-amber-500/30 hover:border-transparent text-amber-400 hover:text-white rounded transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1"
+                                >
+                                  <BikeIcon className="h-3 w-3" />
+                                  {locale === "en" ? "Confirm bikes" : "Conferma moto"}
+                                </button>
+                              </Form>
+                            )
+                          )}
                         </div>
                       </td>
 

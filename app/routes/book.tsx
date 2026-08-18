@@ -4,8 +4,18 @@ import type { Route } from "./+types/book";
 import { requireUserId, getUser } from "../utils/auth.server";
 import { prisma } from "../utils/db.server";
 import { getLocale } from "../utils/locale.server";
+import { buildQrDataUri } from "../utils/qr.server";
+import {
+  buildTrackLocks,
+  checkStandardBookingAgainstLocks,
+  hoursForChampionshipBooking,
+  isDateFullyLocked,
+  lockedHoursOnDate,
+  locksOnDate,
+} from "../utils/track-lock";
 import { sendBookingCreatedEmail } from "../utils/email.server";
 import { translations, type Locale } from "../utils/translations";
+import { getSessionsBasePrice, roundMoney } from "../utils/pricing";
 import { 
   Calendar as CalendarIcon, 
   Users, 
@@ -64,32 +74,48 @@ export async function loader({ request }: Route.LoaderArgs) {
     prisma.dayConfig.findMany({}),
     prisma.championship.findMany({
       where: { isAvailable: true },
+      include: {
+        groups: {
+          orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+          include: {
+            _count: {
+              select: { entries: { where: { booking: { status: { in: ["CONFIRMED", "PENDING"] } } } } },
+            },
+          },
+        },
+      },
     }),
     prisma.companyConfig.findUnique({
       where: { id: "single-config" },
+      // Only what the page renders: the rest of the row (including the bike
+      // assignment policy) has no business in the client payload.
+      select: { companyName: true, logoUrl: true, circuitName: true },
     }).then(conf => conf || {
-      companyName: "Leasio Paddock Rentals",
+      companyName: "MCM Racing School",
       logoUrl: "/images/ohvale_gp_one_1780331510373.png",
       circuitName: "Autodromo di Franciacorta",
     }),
     prisma.booking.findMany({
       where: { status: { in: ["CONFIRMED", "PENDING"] } },
-      include: {
-        bikes: {
-          include: {
-            bike: {
-              include: {
-                model: true
-              }
-            }
-          }
-        }
-      }
+      // This ships to every visitor of the booking page, so it carries only the
+      // fields the availability helpers read — never other customers' identities,
+      // prices, or booking ids.
+      select: {
+        date: true,
+        status: true,
+        hours: true,
+        peopleCount: true,
+        bikes: { select: { bikeId: true } },
+      },
     }),
     targetChampionshipId 
       ? prisma.championship.findUnique({ where: { id: targetChampionshipId } })
       : Promise.resolve(null)
   ]);
+
+  // Scheduled championships reserve the circuit; the form needs to know which
+  // dates and slots are spoken for.
+  const trackLocks = buildTrackLocks(championships);
 
   return { 
     userId, 
@@ -102,35 +128,51 @@ export async function loader({ request }: Route.LoaderArgs) {
     championships, 
     companyConfig, 
     preSelectedChampionship, 
+    trackLocks,
     locale 
   };
 }
 
-const getSessionsBasePrice = (
-  sessions: number,
-  basePricePerSession: number,
-  discountThreshold: number,
-  discountThresholdPrice: number,
-  pricePerSessionAfterThreshold: number
-) => {
-  if (sessions < discountThreshold) {
-    return sessions * basePricePerSession;
-  }
-  return discountThresholdPrice + (sessions - discountThreshold) * pricePerSessionAfterThreshold;
-};
+// Upper bound on a single booking, guards against absurd tampered payloads.
+const MAX_RIDERS_PER_BOOKING = 20;
+
+// Flat per-rider apparel rental fee.
+const APPAREL_PRICE = 10.0;
+
+
+/**
+ * Thrown inside the booking transaction to abort it with a user-facing message.
+ */
+class BookingError extends Error {}
 
 export async function action({ request }: Route.ActionArgs) {
   const userId = await requireUserId(request);
   const formData = await request.formData();
-  
+
   const dateStr = formData.get("date")?.toString(); // YYYY-MM-DD
   const ridersCount = parseInt(formData.get("ridersCount")?.toString() || "0", 10);
   const bookingType = formData.get("bookingType")?.toString() || "STANDARD";
   const championshipType = formData.get("championshipType")?.toString() || null;
   const bikeSelectionMode = formData.get("bikeSelectionMode")?.toString() || "MIXED";
-  
+
   const sessionsCountRaw = formData.get("sessionsCount")?.toString();
   let sessionsCount = parseInt(sessionsCountRaw || "0", 10);
+
+  if (bookingType !== "STANDARD" && bookingType !== "CHAMPIONSHIP") {
+    return { error: "Invalid booking type." };
+  }
+
+  if (bikeSelectionMode !== "MIXED" && bikeSelectionMode !== "FIXED") {
+    return { error: "Invalid bike selection mode." };
+  }
+
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return { error: "Invalid or missing booking date." };
+  }
+
+  if (!Number.isInteger(ridersCount) || ridersCount <= 0 || ridersCount > MAX_RIDERS_PER_BOOKING) {
+    return { error: `Rider count must be between 1 and ${MAX_RIDERS_PER_BOOKING}.` };
+  }
 
   let targetChampionship = null;
   if (bookingType === "CHAMPIONSHIP") {
@@ -139,284 +181,483 @@ export async function action({ request }: Route.ActionArgs) {
     }
     targetChampionship = await prisma.championship.findFirst({
       where: { name: championshipType, isAvailable: true },
+      include: { groups: { orderBy: [{ sortOrder: "asc" }, { name: "asc" }] } },
     });
     if (!targetChampionship) {
       return { error: `Whoops! The selected championship package "${championshipType}" is not active or does not exist.` };
     }
     sessionsCount = targetChampionship.sessionsCount;
-  }
 
-  const selectedHoursStr = formData.get("selectedHours")?.toString() || ""; // comma separated
-  const bikesJson = formData.get("bikesAssignment")?.toString() || "[]"; // array of {modelId, insuranceSelected, apparelSelected}
-
-  if (!dateStr || ridersCount <= 0 || sessionsCount <= 0 || !selectedHoursStr || !bikesJson) {
-    return { error: "Missing essential paddock booking details." };
-  }
-
-  const selectedHours = selectedHoursStr.split(",").map(h => h.trim()).filter(Boolean);
-  const bikeModelAssignments = JSON.parse(bikesJson) as Array<{
-    modelId: string;
-    insuranceSelected: boolean;
-    apparelSelected: boolean;
-    pilotName?: string;
-    pilotEmail?: string;
-  }>;
-
-  if (bikeModelAssignments.length !== ridersCount) {
-    return { error: "Every rider must be assigned an available Ohvale GP model." };
-  }
-
-  // 1. Fetch Day Config / Overrides for custom limits and closures
-  const dayConfig = await prisma.dayConfig.findUnique({
-    where: { date: dateStr },
-  });
-
-  if (dayConfig && !dayConfig.isAvailable) {
-    return { error: `Sorry! The track is fully closed on ${dateStr} for: ${dayConfig.notes || "Private events"}.` };
-  }
-
-  const slotCapacity = dayConfig ? dayConfig.maxCapacityPerSlot : 5; // standard max capacity
-
-  // 2. Capacity checks for each selected time slot on that date
-  const bookingsOnDate = await prisma.booking.findMany({
-    where: { date: dateStr, status: { in: ["CONFIRMED", "PENDING"] } },
-  });
-
-  for (const hour of selectedHours) {
-    let bookedCount = 0;
-    for (const booking of bookingsOnDate) {
-      const bookingHours = booking.hours.split(",").map(h => h.trim());
-      if (bookingHours.includes(hour)) {
-        bookedCount += booking.peopleCount;
-      }
-    }
-
-    if (bookedCount + ridersCount > slotCapacity) {
-      return { 
-        error: `Capacity overflow for ${hour} slot. Remaining spots: ${slotCapacity - bookedCount}. Selected group size: ${ridersCount}.` 
-      };
-    }
-  }
-
-  // 3. Dynamic allocation of specific available bikes based on requested models on that date
-  const bookedBikesOnDate = await prisma.bookingBike.findMany({
-    where: {
-      booking: {
-        date: dateStr,
-        status: { in: ["CONFIRMED", "PENDING"] },
-      },
-    },
-    select: { bikeId: true },
-  });
-
-  const bookedBikeIds = bookedBikesOnDate.map(bb => bb.bikeId);
-
-  // Fetch all available active fleet bikes
-  const availableBikesSystem = await prisma.bike.findMany({
-    where: { 
-      status: "AVAILABLE",
-      model: {
-        NOT: {
-          usage: "ACADEMY"
-        }
-      }
-    },
-    include: { model: true },
-  });
-  
-  const unbookedBikesSystem = availableBikesSystem.filter(b => !bookedBikeIds.includes(b.id));
-
-  // Perform dynamic matching
-  const bikeAssignments: Array<{
-    bikeId: string;
-    insuranceSelected: boolean;
-    apparelSelected: boolean;
-    pilotName?: string;
-    pilotEmail?: string;
-  }> = [];
-
-  const allocatedBikeIdsInRequest = new Set<string>();
-
-  for (const assignment of bikeModelAssignments) {
-    const candidateBike = unbookedBikesSystem.find(
-      b => b.modelId === assignment.modelId && !allocatedBikeIdsInRequest.has(b.id)
-    );
-    if (!candidateBike) {
-      const modelDetails = await prisma.bikeModel.findUnique({ where: { id: assignment.modelId } });
-      return { error: `Sorry! There are no more available Ohvale GP bikes of model "${modelDetails?.name || "selected"}" for this date.` };
-    }
-    allocatedBikeIdsInRequest.add(candidateBike.id);
-    bikeAssignments.push({
-      bikeId: candidateBike.id,
-      insuranceSelected: assignment.insuranceSelected,
-      apparelSelected: assignment.apparelSelected,
-      pilotName: assignment.pilotName,
-      pilotEmail: assignment.pilotEmail,
-    });
-  }
-
-  if (bikeSelectionMode === "FIXED") {
-    const modelCounts: Record<string, number> = {};
-    unbookedBikesSystem.forEach(b => {
-      modelCounts[b.model.model] = (modelCounts[b.model.model] || 0) + 1;
-    });
-    const hasEnoughForFixed = Object.values(modelCounts).some(count => count >= ridersCount);
-    if (!hasEnoughForFixed) {
-      return { error: `Sorry! There are not enough unreserved Ohvale bikes of a single model to support a Fixed Grid booking of ${ridersCount} riders on this date.` };
-    }
-  }
-
-  // Validation for Championship constraints
-  if (bookingType === "CHAMPIONSHIP") {
-    if (!targetChampionship) {
-      return { error: "No championship package found." };
-    }
     if (ridersCount < targetChampionship.minRacers) {
       return { error: `Championship bookings require a minimum grid of ${targetChampionship.minRacers} racers.` };
     }
   }
 
-  // Validation for Fixed Model Grid mode constraints
-  if (bikeSelectionMode === "FIXED") {
-    const selectedBikes = bikeAssignments.map((assign) => {
-      return availableBikesSystem.find(b => b.id === assign.bikeId);
-    });
-    const models = selectedBikes.map(b => b?.model.model).filter(Boolean);
-    if (new Set(models).size > 1) {
-      return { error: "Fixed grid mode requires all riders to compete on the exact same bike model." };
-    }
+  const selectedHoursStr = formData.get("selectedHours")?.toString() || ""; // comma separated
+  const bikesJson = formData.get("bikesAssignment")?.toString() || "[]"; // array of {modelId, insuranceSelected, apparelSelected}
+
+  if (!Number.isInteger(sessionsCount) || sessionsCount <= 0 || !selectedHoursStr) {
+    return { error: "Missing essential paddock booking details." };
   }
 
-  // 4. Server-side price calculation to guarantee zero tamper hacks
-  const parsedDate = new Date(dateStr);
-  const dayOfWeek = parsedDate.getDay(); // 0 = Sun, 1 = Mon ...
-  const tariff = await prisma.tariff.findUnique({
-    where: { dayOfWeek },
+  let selectedHours = selectedHoursStr.split(",").map(h => h.trim()).filter(Boolean);
+
+  // Which championships reserve the circuit on this date.
+  const lockRows = await prisma.championship.findMany({
+    where: { fixedDate: dateStr, isAvailable: true },
+    select: { id: true, name: true, fixedDate: true, isAvailable: true, lockMode: true, lockedHours: true },
   });
-
-  if (!tariff) {
-    return { error: "Pricing tariff rules for this day of the week are missing." };
-  }
-
-  const customModifier = dayConfig?.customPriceModifier || 1.0;
-  let finalPrice = 0;
+  const trackLocks = buildTrackLocks(lockRows);
 
   if (bookingType === "CHAMPIONSHIP") {
-    if (!targetChampionship) {
-      return { error: "No championship package found." };
+    // A scheduled championship may only be booked on its own date.
+    if (targetChampionship?.fixedDate && targetChampionship.fixedDate !== dateStr) {
+      return { error: `"${targetChampionship.name}" runs on ${targetChampionship.fixedDate}, not ${dateStr}.` };
     }
-    finalPrice += targetChampionship.price * ridersCount;
+
+    // The event dictates its own hours, so ignore whatever the form submitted.
+    const ownLock = trackLocks.find(l => l.championshipId === targetChampionship?.id);
+    if (ownLock) {
+      const allSlots = await prisma.timeSlot.findMany({ orderBy: { time: "asc" }, select: { time: true } });
+      selectedHours = hoursForChampionshipBooking(ownLock, allSlots.map(sl => sl.time));
+    }
   } else {
-    // STANDARD mode: calculate base session packs + paddock entry
-    const baseSessionsPricePerRider = getSessionsBasePrice(
-      sessionsCount,
-      tariff.basePricePerSession,
-      tariff.discountThreshold,
-      tariff.discountThresholdPrice,
-      tariff.pricePerSessionAfterThreshold
-    ) * customModifier;
-    const basePersonPrice = tariff.basePricePerPerson * customModifier;
-    finalPrice += (basePersonPrice + baseSessionsPricePerRider) * ridersCount;
-  }
-
-  // Add individual bike modifiers, insurance, and apparel
-  for (const assignment of bikeAssignments) {
-    const bike = availableBikesSystem.find(b => b.id === assignment.bikeId);
-    if (!bike || bike.status !== "AVAILABLE") {
-      return { error: `One of the selected bikes is not available.` };
-    }
-
-    if (bookingType === "STANDARD") {
-      // Bike pricing modifier (adds to base sessions)
-      const baseSessionsPricePerRider = getSessionsBasePrice(
-        sessionsCount,
-        tariff.basePricePerSession,
-        tariff.discountThreshold,
-        tariff.discountThresholdPrice,
-        tariff.pricePerSessionAfterThreshold
-      ) * customModifier;
-      const modifierAddedPrice = baseSessionsPricePerRider * (bike.model.priceModifier - 1.0);
-      finalPrice += modifierAddedPrice;
-    }
-
-    // Insurance addition
-    if (assignment.insuranceSelected) {
-      finalPrice += bike.model.insurancePrice;
-    }
-
-    // Apparel addition
-    if (assignment.apparelSelected) {
-      finalPrice += 10.0;
+    const conflict = checkStandardBookingAgainstLocks(trackLocks, dateStr, selectedHours);
+    if (conflict.blocked) {
+      return {
+        error:
+          conflict.reason === "FULL_DAY"
+            ? `The circuit is reserved for "${conflict.championshipName}" on ${dateStr}. Pick another date.`
+            : `"${conflict.championshipName}" has the track at ${conflict.hours.join(", ")} on ${dateStr}. Pick different session times.`,
+      };
     }
   }
 
-  // 5. Create Booking and assigned bikes in a single database transaction
-  const booking = await prisma.$transaction(async (tx) => {
-    const createdBooking = await tx.booking.create({
-      data: {
-        userId,
-        date: dateStr,
-        sessionsCount,
-        peopleCount: ridersCount,
-        hours: selectedHours.join(", "),
-        totalPrice: finalPrice,
-        status: "PENDING",
-        bookingType,
-        championshipType: bookingType === "CHAMPIONSHIP" ? championshipType : null,
-        bikeSelectionMode,
-      },
+  if (selectedHours.length === 0) {
+    return { error: "Select at least one session slot." };
+  }
+
+  if (new Set(selectedHours).size !== selectedHours.length) {
+    return { error: "The same session slot was selected more than once." };
+  }
+
+  // Only slots that actually exist may be booked
+  const knownSlots = await prisma.timeSlot.findMany({ select: { time: true } });
+  const knownSlotTimes = new Set(knownSlots.map(s => s.time));
+  const unknownSlot = selectedHours.find(h => !knownSlotTimes.has(h));
+  if (unknownSlot) {
+    return { error: `"${unknownSlot}" is not a valid session slot.` };
+  }
+
+  let rawAssignments: unknown;
+  try {
+    rawAssignments = JSON.parse(bikesJson);
+  } catch {
+    return { error: "Malformed bike assignment payload." };
+  }
+
+  if (!Array.isArray(rawAssignments)) {
+    return { error: "Malformed bike assignment payload." };
+  }
+
+  const bikeModelAssignments: Array<{
+    modelId: string;
+    insuranceSelected: boolean;
+    apparelSelected: boolean;
+    pilotName?: string;
+    pilotEmail?: string;
+    championshipGroupId?: string;
+  }> = [];
+
+  // Championship riders race in a skill group, and every rider must land in one.
+  const championshipGroups = targetChampionship?.groups ?? [];
+  if (bookingType === "CHAMPIONSHIP" && championshipGroups.length === 0) {
+    return { error: "This championship has no skill groups yet. Please contact the paddock." };
+  }
+  const groupsById = new Map(championshipGroups.map((g) => [g.id, g]));
+
+  for (const entry of rawAssignments) {
+    if (typeof entry !== "object" || entry === null) {
+      return { error: "Malformed bike assignment payload." };
+    }
+    const candidate = entry as Record<string, unknown>;
+    if (typeof candidate.modelId !== "string" || !candidate.modelId) {
+      return { error: "Every rider must be assigned an available Ohvale GP model." };
+    }
+    let championshipGroupId: string | undefined;
+    if (bookingType === "CHAMPIONSHIP") {
+      if (typeof candidate.championshipGroupId !== "string" || !groupsById.has(candidate.championshipGroupId)) {
+        return { error: "Every racer must pick a skill group for this championship." };
+      }
+      championshipGroupId = candidate.championshipGroupId;
+    }
+
+    bikeModelAssignments.push({
+      championshipGroupId,
+      modelId: candidate.modelId,
+      insuranceSelected: candidate.insuranceSelected === true,
+      apparelSelected: candidate.apparelSelected === true,
+      pilotName: typeof candidate.pilotName === "string" ? candidate.pilotName.trim().slice(0, 120) : undefined,
+      pilotEmail: typeof candidate.pilotEmail === "string" ? candidate.pilotEmail.trim().toLowerCase() : undefined,
     });
+  }
 
-    for (let i = 0; i < bikeAssignments.length; i++) {
-      const assignment = bikeAssignments[i];
-      let pName = assignment.pilotName || `Rider ${i + 1}`;
-      let pEmail = assignment.pilotEmail || null;
-      let pilotUserId: string | null = null;
+  if (bikeModelAssignments.length !== ridersCount) {
+    return { error: "Every rider must be assigned an available Ohvale GP model." };
+  }
 
-      if (i === 0) {
-        const ownerUser = await tx.user.findUnique({ where: { id: userId } });
-        pName = ownerUser?.name || pName;
-        pEmail = ownerUser?.email || pEmail;
-        pilotUserId = userId;
-      } else {
-        if (pEmail) {
-          const matchedUser = await tx.user.findUnique({
-            where: { email: pEmail.trim().toLowerCase() },
-          });
-          if (matchedUser) {
-            pilotUserId = matchedUser.id;
+  // Everything below reads and writes availability, so it runs in a single
+  // serializable transaction: two riders racing for the last slot or the last
+  // bike must not both pass validation.
+  let booking;
+  try {
+    booking = await prisma.$transaction(async (tx) => {
+      // 1. Fetch Day Config / Overrides for custom limits and closures
+      const dayConfig = await tx.dayConfig.findUnique({
+        where: { date: dateStr },
+      });
+
+      if (dayConfig && !dayConfig.isAvailable) {
+        throw new BookingError(`Sorry! The track is fully closed on ${dateStr} for: ${dayConfig.notes || "Private events"}.`);
+      }
+
+      const slotCapacity = dayConfig ? dayConfig.maxCapacityPerSlot : 5; // standard max capacity
+
+      // 2. Capacity checks for each selected time slot on that date
+      const bookingsOnDate = await tx.booking.findMany({
+        where: { date: dateStr, status: { in: ["CONFIRMED", "PENDING"] } },
+      });
+
+      for (const hour of selectedHours) {
+        let bookedCount = 0;
+        for (const existing of bookingsOnDate) {
+          const bookingHours = existing.hours.split(",").map(h => h.trim());
+          if (bookingHours.includes(hour)) {
+            bookedCount += existing.peopleCount;
           }
         }
-        if (!pilotUserId && pName) {
-          const matchedUser = await tx.user.findFirst({
-            where: { name: { equals: pName.trim(), mode: "insensitive" } },
+
+        if (bookedCount + ridersCount > slotCapacity) {
+          throw new BookingError(
+            `Capacity overflow for ${hour} slot. Remaining spots: ${slotCapacity - bookedCount}. Selected group size: ${ridersCount}.`
+          );
+        }
+      }
+
+      // 3. Dynamic allocation of specific available bikes based on requested models on that date
+      const bookedBikesOnDate = await tx.bookingBike.findMany({
+        where: {
+          booking: {
+            date: dateStr,
+            status: { in: ["CONFIRMED", "PENDING"] },
+          },
+        },
+        select: { bikeId: true, championshipGroupId: true },
+      });
+
+      // A championship group is its own heat, so the fleet frees up again in
+      // every group. Ordinary track bookings hold a bike for the whole day and
+      // therefore block it everywhere.
+      const bikesHeldAllDay = new Set(
+        bookedBikesOnDate.filter(bb => bb.championshipGroupId === null).map(bb => bb.bikeId)
+      );
+      const bikesHeldByGroup = new Map<string, Set<string>>();
+      bookedBikesOnDate.forEach((bb) => {
+        if (!bb.championshipGroupId) return;
+        const set = bikesHeldByGroup.get(bb.championshipGroupId) ?? new Set<string>();
+        set.add(bb.bikeId);
+        bikesHeldByGroup.set(bb.championshipGroupId, set);
+      });
+
+      /** Bikes unavailable to a given rider, given which heat they race in. */
+      const bikesUnavailableFor = (groupId?: string) => {
+        if (!groupId) {
+          // Standard booking: anything already committed that day is taken.
+          return new Set(bookedBikesOnDate.map(bb => bb.bikeId));
+        }
+        return new Set([...bikesHeldAllDay, ...(bikesHeldByGroup.get(groupId) ?? [])]);
+      };
+
+      // Fetch all available active fleet bikes
+      const availableBikesSystem = await tx.bike.findMany({
+        where: {
+          status: "AVAILABLE",
+          model: {
+            NOT: {
+              usage: "ACADEMY"
+            }
+          }
+        },
+        include: { model: true },
+      });
+
+      // Heats have a fixed grid size; count what is already committed and add
+      // the riders this request wants to put in each group.
+      if (bookingType === "CHAMPIONSHIP") {
+        const wantedPerGroup = new Map<string, number>();
+        bikeModelAssignments.forEach((a) => {
+          if (!a.championshipGroupId) return;
+          wantedPerGroup.set(a.championshipGroupId, (wantedPerGroup.get(a.championshipGroupId) ?? 0) + 1);
+        });
+
+        for (const [groupId, wanted] of wantedPerGroup) {
+          const group = groupsById.get(groupId)!;
+          const taken = await tx.bookingBike.count({
+            where: {
+              championshipGroupId: groupId,
+              booking: { status: { in: ["CONFIRMED", "PENDING"] } },
+            },
           });
-          if (matchedUser) {
-            pilotUserId = matchedUser.id;
+          if (taken + wanted > group.capacity) {
+            const left = Math.max(0, group.capacity - taken);
+            throw new BookingError(
+              `The "${group.name}" group has ${left} place(s) left but ${wanted} racer(s) were entered for it.`
+            );
           }
         }
       }
 
-      await tx.bookingBike.create({
-        data: {
-          bookingId: createdBooking.id,
-          bikeId: assignment.bikeId,
+      // Perform dynamic matching
+      const bikeAssignments: Array<{
+        bikeId: string;
+        insuranceSelected: boolean;
+        apparelSelected: boolean;
+        pilotName?: string;
+        pilotEmail?: string;
+        championshipGroupId?: string;
+      }> = [];
+
+      // Allocations already made by this request, keyed by heat so the same bike
+      // can legitimately serve one rider per group.
+      const allocatedInRequest = new Map<string, Set<string>>();
+      const claimKey = (groupId?: string) => groupId ?? "__all_day__";
+
+      for (const assignment of bikeModelAssignments) {
+        const key = claimKey(assignment.championshipGroupId);
+        const claimed = allocatedInRequest.get(key) ?? new Set<string>();
+        const unavailable = bikesUnavailableFor(assignment.championshipGroupId);
+
+        const candidateBike = availableBikesSystem.find(
+          b => b.modelId === assignment.modelId && !unavailable.has(b.id) && !claimed.has(b.id)
+        );
+        if (!candidateBike) {
+          const modelDetails = await tx.bikeModel.findUnique({ where: { id: assignment.modelId } });
+          throw new BookingError(`Sorry! There are no more available Ohvale GP bikes of model "${modelDetails?.name || "selected"}" for this date.`);
+        }
+        claimed.add(candidateBike.id);
+        allocatedInRequest.set(key, claimed);
+        bikeAssignments.push({
+          bikeId: candidateBike.id,
+          championshipGroupId: assignment.championshipGroupId,
           insuranceSelected: assignment.insuranceSelected,
           apparelSelected: assignment.apparelSelected,
-          pilotName: pName,
-          pilotUserId: pilotUserId,
+          pilotName: assignment.pilotName,
+          pilotEmail: assignment.pilotEmail,
+        });
+      }
+
+      // Validation for Fixed Model Grid mode constraints
+      if (bikeSelectionMode === "FIXED") {
+        // Availability differs per heat, so judge the fixed-grid rule against
+        // the bikes free for the heat these riders actually race in.
+        const fixedGroupId = bikeModelAssignments[0]?.championshipGroupId;
+        const unavailableForFixed = bikesUnavailableFor(fixedGroupId);
+        const modelCounts: Record<string, number> = {};
+        availableBikesSystem
+          .filter(b => !unavailableForFixed.has(b.id))
+          .forEach(b => {
+            modelCounts[b.model.model] = (modelCounts[b.model.model] || 0) + 1;
+          });
+        const hasEnoughForFixed = Object.values(modelCounts).some(count => count >= ridersCount);
+        if (!hasEnoughForFixed) {
+          throw new BookingError(`Sorry! There are not enough unreserved Ohvale bikes of a single model to support a Fixed Grid booking of ${ridersCount} riders on this date.`);
+        }
+
+        const selectedBikes = bikeAssignments.map((assign) =>
+          availableBikesSystem.find(b => b.id === assign.bikeId)
+        );
+        const models = selectedBikes.map(b => b?.model.model).filter(Boolean);
+        if (new Set(models).size > 1) {
+          throw new BookingError("Fixed grid mode requires all riders to compete on the exact same bike model.");
+        }
+      }
+
+      // 4. Server-side price calculation to guarantee zero tamper hacks
+      const parsedDate = new Date(dateStr);
+      const dayOfWeek = parsedDate.getDay(); // 0 = Sun, 1 = Mon ...
+      const tariff = await tx.tariff.findUnique({
+        where: { dayOfWeek },
+      });
+
+      if (!tariff) {
+        throw new BookingError("Pricing tariff rules for this day of the week are missing.");
+      }
+
+      if (bookingType === "STANDARD" && (sessionsCount < tariff.minSessions || sessionsCount > tariff.maxSessions)) {
+        throw new BookingError(`Session count must be between ${tariff.minSessions} and ${tariff.maxSessions} for this day.`);
+      }
+
+      const customModifier = dayConfig?.customPriceModifier || 1.0;
+      let finalPrice = 0;
+
+      if (bookingType === "CHAMPIONSHIP") {
+        if (!targetChampionship) {
+          throw new BookingError("No championship package found.");
+        }
+        finalPrice += targetChampionship.price * ridersCount;
+      } else {
+        // STANDARD mode: calculate base session packs + paddock entry
+        const baseSessionsPricePerRider = getSessionsBasePrice(
+          sessionsCount,
+          tariff.basePricePerSession,
+          tariff.discountThreshold,
+          tariff.discountThresholdPrice,
+          tariff.pricePerSessionAfterThreshold
+        ) * customModifier;
+        const basePersonPrice = tariff.basePricePerPerson * customModifier;
+        finalPrice += (basePersonPrice + baseSessionsPricePerRider) * ridersCount;
+      }
+
+      // Add individual bike modifiers, insurance, and apparel
+      for (const assignment of bikeAssignments) {
+        const bike = availableBikesSystem.find(b => b.id === assignment.bikeId);
+        if (!bike || bike.status !== "AVAILABLE") {
+          throw new BookingError("One of the selected bikes is not available.");
+        }
+
+        if (bookingType === "STANDARD") {
+          // Bike pricing modifier (adds to base sessions)
+          const baseSessionsPricePerRider = getSessionsBasePrice(
+            sessionsCount,
+            tariff.basePricePerSession,
+            tariff.discountThreshold,
+            tariff.discountThresholdPrice,
+            tariff.pricePerSessionAfterThreshold
+          ) * customModifier;
+          const modifierAddedPrice = baseSessionsPricePerRider * (bike.model.priceModifier - 1.0);
+          finalPrice += modifierAddedPrice;
+        }
+
+        // Insurance addition
+        if (assignment.insuranceSelected) {
+          finalPrice += bike.model.insurancePrice;
+        }
+
+        // Apparel addition
+        if (assignment.apparelSelected) {
+          finalPrice += APPAREL_PRICE;
+        }
+      }
+
+      // 5. Create Booking and assigned bikes.
+      // Bikes are always allocated now so availability stays exact; under MANUAL
+      // the allocation is provisional and the back office reviews it.
+      const companyConfig = await tx.companyConfig.findUnique({
+        where: { id: "single-config" },
+        select: { bikeAssignmentMode: true },
+      });
+      const bikeAssignmentMode =
+        companyConfig?.bikeAssignmentMode === "MANUAL" ? "MANUAL" : "AUTO";
+
+      const createdBooking = await tx.booking.create({
+        data: {
+          userId,
+          date: dateStr,
+          sessionsCount,
+          peopleCount: ridersCount,
+          hours: selectedHours.join(", "),
+          totalPrice: roundMoney(finalPrice),
+          status: "PENDING",
+          bookingType,
+          championshipType: bookingType === "CHAMPIONSHIP" ? championshipType : null,
+          bikeSelectionMode,
+          bikeAssignmentMode,
         },
       });
-    }
 
-    return createdBooking;
-  });
+      const ownerUser = await tx.user.findUnique({ where: { id: userId } });
+
+      // Grid numbers continue from whoever is already entered in each heat, so
+      // positions stay unique and stable on the assignment sheet.
+      const nextGridPosition = new Map<string, number>();
+      for (const groupId of new Set(bikeAssignments.map(a => a.championshipGroupId).filter(Boolean))) {
+        const taken = await tx.bookingBike.count({
+          where: {
+            championshipGroupId: groupId as string,
+            booking: { status: { in: ["CONFIRMED", "PENDING"] } },
+          },
+        });
+        nextGridPosition.set(groupId as string, taken + 1);
+      }
+
+      for (let i = 0; i < bikeAssignments.length; i++) {
+        const assignment = bikeAssignments[i];
+        let pName = assignment.pilotName || `Rider ${i + 1}`;
+        let pilotUserId: string | null = null;
+
+        if (i === 0) {
+          pName = ownerUser?.name || pName;
+          pilotUserId = userId;
+        } else if (assignment.pilotEmail) {
+          // Only an exact email match links a real account to a booking; matching
+          // on display name would hand a stranger read access to this booking.
+          const matchedUser = await tx.user.findUnique({
+            where: { email: assignment.pilotEmail },
+          });
+          if (matchedUser) {
+            pilotUserId = matchedUser.id;
+          }
+        }
+
+        let gridPosition: number | null = null;
+        if (assignment.championshipGroupId) {
+          gridPosition = nextGridPosition.get(assignment.championshipGroupId) ?? 1;
+          nextGridPosition.set(assignment.championshipGroupId, gridPosition + 1);
+        }
+
+        await tx.bookingBike.create({
+          data: {
+            bookingId: createdBooking.id,
+            bikeId: assignment.bikeId,
+            insuranceSelected: assignment.insuranceSelected,
+            apparelSelected: assignment.apparelSelected,
+            pilotName: pName,
+            pilotUserId: pilotUserId,
+            championshipGroupId: assignment.championshipGroupId ?? null,
+            declaredLevel: assignment.championshipGroupId
+              ? groupsById.get(assignment.championshipGroupId)?.name ?? null
+              : null,
+            gridPosition,
+          },
+        });
+      }
+
+      return createdBooking;
+    }, { isolationLevel: "Serializable" });
+  } catch (err) {
+    if (err instanceof BookingError) {
+      return { error: err.message };
+    }
+    // Prisma raises P2034 when a serializable transaction loses a write race.
+    if (typeof err === "object" && err !== null && (err as { code?: string }).code === "P2034") {
+      return { error: "Someone just booked those spots. Please review availability and try again." };
+    }
+    throw err;
+  }
 
   const url = new URL(request.url);
   const requestHost = `${url.protocol}//${url.host}`;
-  await sendBookingCreatedEmail(booking.id, requestHost);
+  try {
+    await sendBookingCreatedEmail(booking.id, requestHost);
+  } catch (err) {
+    // The booking is already committed; a mail failure must not fail the request.
+    console.error("[BOOKING] Confirmation email failed to send:", err);
+  }
 
-  return { success: true, bookingId: booking.id, totalPrice: finalPrice };
+  const orderUrl = new URL(`/order/${booking.id}`, request.url).toString();
+  const qrCodeSrc = await buildQrDataUri(orderUrl);
+
+  return { success: true, bookingId: booking.id, totalPrice: booking.totalPrice, orderUrl, qrCodeSrc };
 }
 
 export default function Book() {
@@ -431,11 +672,12 @@ export default function Book() {
     championships, 
     companyConfig, 
     preSelectedChampionship, 
+    trackLocks,
     locale 
   } = useLoaderData<typeof loader>();
   const t = translations[locale as Locale];
 
-  const actionData = useActionData() as { error?: string; success?: boolean; bookingId?: string; totalPrice?: number } | undefined;
+  const actionData = useActionData() as { error?: string; success?: boolean; bookingId?: string; totalPrice?: number; orderUrl?: string; qrCodeSrc?: string } | undefined;
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
 
@@ -465,6 +707,8 @@ export default function Book() {
   const [sessionsCount, setSessionsCount] = useState(2);
   const [selectedHours, setSelectedHours] = useState<string[]>([]);
   const [bikesAssignment, setBikesAssignment] = useState<Array<{ modelId: string; insuranceSelected: boolean; apparelSelected: boolean }>>([]);
+  // Championship skill group per rider, keyed by rider index.
+  const [riderGroups, setRiderGroups] = useState<string[]>([]);
 
   // Pilot details state matching ridersCount size
   const [pilots, setPilots] = useState<Array<{ name: string; email: string }>>([
@@ -592,6 +836,13 @@ export default function Book() {
   const totalPrice = calculateTotalPrice();
 
   // Helper: check capacity left for a slot on the selected date
+  // A scheduled championship reserves the circuit; ordinary bookings must see
+  // that before they get as far as submitting.
+  const isChampionshipBooking = bookingType === "CHAMPIONSHIP";
+  const dayLocks = date ? locksOnDate(trackLocks, date) : [];
+  const dayFullyLocked = !isChampionshipBooking && date ? isDateFullyLocked(trackLocks, date) : false;
+  const reservedHours = !isChampionshipBooking && date ? lockedHoursOnDate(trackLocks, date) : new Set<string>();
+
   const getCapacityLeft = (hour: string) => {
     if (!date) return 5;
     const dayConfig = dayConfigs.find(dc => dc.date === date);
@@ -599,7 +850,7 @@ export default function Book() {
 
     let booked = 0;
     existingBookings
-      .filter(b => b.date === date && b.status === "CONFIRMED")
+      .filter(b => b.date === date && (b.status === "CONFIRMED" || b.status === "PENDING"))
       .forEach((b) => {
         const hours = b.hours.split(",").map(h => h.trim());
         if (hours.includes(hour)) {
@@ -615,7 +866,9 @@ export default function Book() {
     if (!date) return false;
     let booked = false;
     existingBookings
-      .filter(b => b.date === date && b.status === "CONFIRMED")
+      // PENDING bookings hold their bikes too — the server counts them, so the
+      // picker must, or a rider can choose a unit the action will reject.
+      .filter(b => b.date === date && (b.status === "CONFIRMED" || b.status === "PENDING"))
       .forEach((b) => {
         b.bikes.forEach((bb) => {
           if (bb.bikeId === bikeId) booked = true;
@@ -642,6 +895,29 @@ export default function Book() {
   const isEnoughBikes = ridersCount <= totalAvailableBikes;
 
   // Actions
+  const activeChampionship = championships.find(c => c.name === championshipType);
+  const activeGroups = bookingType === "CHAMPIONSHIP" ? (activeChampionship?.groups ?? []) : [];
+
+  /** Places left in a group, accounting for riders this form has already put there. */
+  const groupPlacesLeft = (groupId: string, exceptRiderIndex?: number) => {
+    const group = activeGroups.find(g => g.id === groupId);
+    if (!group) return 0;
+    const claimedHere = riderGroups.filter(
+      (gid, idx) => gid === groupId && idx !== exceptRiderIndex
+    ).length;
+    return Math.max(0, group.capacity - group._count.entries - claimedHere);
+  };
+
+  const handleAssignGroup = (riderIndex: number, groupId: string) => {
+    const next = [...riderGroups];
+    next[riderIndex] = groupId;
+    setRiderGroups(next);
+  };
+
+  const allRidersHaveGroup =
+    bookingType !== "CHAMPIONSHIP" ||
+    (riderGroups.length >= ridersCount && riderGroups.slice(0, ridersCount).every(Boolean));
+
   const handleToggleHour = (hour: string) => {
     if (selectedHours.includes(hour)) {
       setSelectedHours(selectedHours.filter(h => h !== hour));
@@ -709,20 +985,24 @@ export default function Book() {
         };
       });
       setBikesAssignment(initial);
+      setRiderGroups((prev) => {
+        const next = [...prev];
+        next.length = ridersCount;
+        return Array.from({ length: ridersCount }, (_, i) => next[i] || "");
+      });
     } else if (step === 2) {
       if (selectedHours.length === 0) return;
       const incomplete = bikesAssignment.some(ba => !ba.modelId);
       if (incomplete) return;
+      if (!allRidersHaveGroup) return;
       setStep(3);
     }
   };
 
   // If action success, display gorgeous paddock confirmation pass
   if (actionData?.success) {
-    const orderUrl = typeof window !== "undefined"
-      ? `${window.location.origin}/order/${actionData.bookingId}`
-      : `/order/${actionData.bookingId}`;
-    const qrCodeSrc = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(orderUrl)}`;
+    const qrCodeSrc = actionData.qrCodeSrc || "";
+    const orderUrl = actionData.orderUrl || `/order/${actionData.bookingId}`;
 
     return (
       <div className="min-h-screen bg-slate-950 text-white font-sans flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
@@ -886,7 +1166,7 @@ export default function Book() {
               <img src={companyConfig.logoUrl} alt="Logo" className="h-full object-contain max-w-24" />
             </div>
           ) : (
-            <img src="/logosmall.png" alt="Leasio Logo" className="h-6 w-auto object-contain shrink-0" />
+            <img src="/logosmall.png" alt={companyConfig.companyName} className="h-6 w-auto object-contain shrink-0" />
           )}
           <span className="text-xl font-black uppercase text-white tracking-tight leading-none">
             {companyConfig.companyName}
@@ -1416,7 +1696,8 @@ export default function Book() {
                 {slots.map((slot) => {
                   const capacityLeft = getCapacityLeft(slot.time);
                   const isChecked = selectedHours.includes(slot.time);
-                  const isFull = capacityLeft <= 0;
+                  const isReserved = reservedHours.has(slot.time) || dayFullyLocked;
+                  const isFull = capacityLeft <= 0 || isReserved;
 
                   return (
                     <button
@@ -1433,7 +1714,9 @@ export default function Book() {
                       }`}
                     >
                       <span className="block font-mono font-extrabold text-base">{slot.time}</span>
-                      <span className="block text-[10px] text-slate-500 uppercase mt-0.5">{slot.label}</span>
+                      <span className="block text-[10px] text-slate-500 uppercase mt-0.5">
+                        {isReserved ? (locale === "en" ? "Reserved — race day" : "Riservato — gara") : slot.label}
+                      </span>
                       
                       {/* Spots Badge */}
                       <span className={`absolute bottom-2.5 right-3 text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded ${
@@ -1469,6 +1752,48 @@ export default function Book() {
                               {pilots[index]?.name || `${t.riderConfigLabel} #${index + 1}`}
                             </h4>
                           </div>
+
+                          {/* Skill group: decides which heat this rider races in */}
+                          {bookingType === "CHAMPIONSHIP" && activeGroups.length > 0 && (
+                            <div className="space-y-2">
+                              <label className="block text-[10px] uppercase text-slate-400 font-bold tracking-wider">
+                                {locale === "en" ? "Experience Level / Group" : "Livello di Esperienza / Gruppo"}
+                              </label>
+                              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                                {activeGroups.map((group) => {
+                                  const chosen = riderGroups[index] === group.id;
+                                  const left = groupPlacesLeft(group.id, index);
+                                  const full = left <= 0 && !chosen;
+                                  return (
+                                    <button
+                                      key={group.id}
+                                      type="button"
+                                      disabled={full}
+                                      onClick={() => handleAssignGroup(index, group.id)}
+                                      className={`p-2.5 rounded-xl border text-left transition-all ${
+                                        chosen
+                                          ? "bg-orange-600/10 border-orange-500 text-white cursor-default"
+                                          : full
+                                            ? "bg-slate-950/45 border-slate-900 text-slate-500 opacity-50 cursor-not-allowed"
+                                            : "bg-slate-900 hover:bg-slate-850 border-slate-850 text-slate-300 cursor-pointer"
+                                      }`}
+                                    >
+                                      <span className="block font-bold text-[10px] uppercase truncate">{group.name}</span>
+                                      {group.description && (
+                                        <span className="block text-[9px] text-slate-500 truncate mt-0.5">{group.description}</span>
+                                      )}
+                                      <span className="block text-[9px] text-slate-500 font-mono mt-1">
+                                        {group.timeSlot ? `${group.timeSlot} · ` : ""}
+                                        {full
+                                          ? (locale === "en" ? "Full" : "Pieno")
+                                          : (locale === "en" ? `${left} left` : `${left} posti`)}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
 
                           {/* Bike Selector grid replaced by Model Selector grid */}
                           {bikeSelectionMode === "FIXED" ? (
@@ -1634,7 +1959,7 @@ export default function Book() {
               <button
                 type="button"
                 onClick={handleNextStep}
-                disabled={selectedHours.length === 0 || bikesAssignment.some(ba => !ba.modelId)}
+                disabled={selectedHours.length === 0 || bikesAssignment.some(ba => !ba.modelId) || !allRidersHaveGroup}
                 className="flex items-center space-x-2 bg-orange-600 text-white font-extrabold uppercase tracking-wider text-xs px-8 py-4.5 rounded-xl hover:bg-orange-500 shadow-xl shadow-orange-600/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-[0.98] cursor-pointer"
               >
                 <span>{t.buttonNextStep3}</span>
@@ -1860,6 +2185,7 @@ export default function Book() {
                     value={JSON.stringify(
                       bikesAssignment.map((ba, idx) => ({
                         modelId: ba.modelId,
+                        championshipGroupId: bookingType === "CHAMPIONSHIP" ? (riderGroups[idx] || "") : undefined,
                         insuranceSelected: ba.insuranceSelected,
                         apparelSelected: ba.apparelSelected,
                         pilotName: pilots[idx]?.name || "",

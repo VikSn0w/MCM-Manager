@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "../utils/db.server";
 import { createUserSession } from "../utils/auth.server";
 import { getLocale } from "../utils/locale.server";
+import { MIN_PASSWORD_LENGTH } from "../utils/auth-constants";
 import { translations, type Locale } from "../utils/translations";
 import { UserPlus, Flag, AlertTriangle, ChevronRight } from "lucide-react";
 
@@ -36,13 +37,16 @@ export async function action({ request }: Route.ActionArgs) {
     return { error: "Passwords do not match." };
   }
 
-  if (password.length < 6) {
-    return { error: "Password must be at least 6 characters." };
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return { error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.` };
   }
+
+  // Emails are stored normalised to lowercase so lookups are case-insensitive
+  const normalisedEmail = email.trim().toLowerCase();
 
   // Check if email already exists
   const existingUser = await prisma.user.findUnique({
-    where: { email },
+    where: { email: normalisedEmail },
   });
 
   if (existingUser) {
@@ -58,8 +62,8 @@ export async function action({ request }: Route.ActionArgs) {
 
   const user = await prisma.user.create({
     data: {
-      name,
-      email,
+      name: name.trim(),
+      email: normalisedEmail,
       password: passwordHash,
       role,
     },
@@ -91,7 +95,7 @@ export default function Signup() {
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10 text-center">
         <div className="inline-block bg-white px-8 py-5 rounded-2xl shadow-xl border border-slate-200 mb-6 transition-transform hover:scale-[1.02]">
-          <img src="/logoleasio.png" alt="Leasio" className="h-10 mx-auto object-contain" />
+          <img src="/images/logo.webp" alt="MCM Racing School" className="h-10 mx-auto object-contain" />
         </div>
         <h2 className="text-center text-2xl sm:text-3xl font-extrabold text-white tracking-tight uppercase">
           {t.createProfile}
@@ -144,7 +148,7 @@ export default function Signup() {
                   type="email"
                   autoComplete="email"
                   required
-                  placeholder="vr46@leasio.com"
+                  placeholder="vr46@example.com"
                   className="w-full bg-slate-950/80 border border-slate-800 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 text-white rounded-xl py-3 px-4 shadow-inner placeholder-slate-600 transition-all text-sm outline-none"
                 />
               </div>
@@ -193,10 +197,10 @@ export default function Signup() {
                 className="h-4.5 w-4.5 rounded bg-slate-950 border-slate-800 text-orange-500 focus:ring-orange-500/30"
               />
               <label htmlFor="terms" className="ml-2.5 block text-sm text-slate-400">
-                {locale === "en" ? "I accept the Leasio " : "Accetto i "}
-                <a href="#" className="text-orange-500 hover:text-orange-400 font-semibold underline decoration-orange-500/30">
+                {locale === "en" ? "I accept the " : "Accetto i "}
+                <span className="text-orange-500 font-semibold">
                   {t.safetyRegulations}
-                </a>
+                </span>
               </label>
             </div>
 

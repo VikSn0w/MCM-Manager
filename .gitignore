@@ -1,11 +1,12 @@
 .DS_Store
-.env
 /node_modules/
 
 # React Router
 /.react-router/
 /build/
-./package-lock.json
+
 .vercel
+
+# Secrets: ignore every .env variant, but keep the checked-in template.
 .env*
-package-lock.json
+!.env.example

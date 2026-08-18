@@ -5,6 +5,7 @@ import { prisma } from "../utils/db.server";
 import { getLocale } from "../utils/locale.server";
 import { sendBookingCancelledEmail } from "../utils/email.server";
 import { translations, type Locale } from "../utils/translations";
+import { isTodayOrFuture } from "../utils/dates";
 import { 
   Calendar, 
   Flag, 
@@ -26,7 +27,7 @@ import {
 export async function loader({ request }: Route.LoaderArgs) {
   const userId = await requireUserId(request, "/login?redirectTo=/dashboard");
 
-  const [user, locale, bookings] = await Promise.all([
+  const [user, locale, bookings, companyConfig] = await Promise.all([
     getUser(request),
     getLocale(request),
     prisma.booking.findMany({
@@ -57,18 +58,27 @@ export async function loader({ request }: Route.LoaderArgs) {
         },
       },
       orderBy: { date: "desc" },
-    })
+    }),
+    prisma.companyConfig.findUnique({
+      where: { id: "single-config" },
+      select: { companyName: true },
+    }),
   ]);
 
   if (!user) {
     throw redirect("/login");
   }
 
-  return { user, bookings, locale };
+  return {
+    user,
+    bookings,
+    locale,
+    companyName: companyConfig?.companyName || "MCM Racing School",
+  };
 }
 
 export async function action({ request }: Route.ActionArgs) {
-  await requireUserId(request);
+  const userId = await requireUserId(request);
   const formData = await request.formData();
   const bookingId = formData.get("bookingId")?.toString();
   const intent = formData.get("intent")?.toString();
@@ -83,6 +93,14 @@ export async function action({ request }: Route.ActionArgs) {
 
     if (!booking) {
       return { error: "Booking not found." };
+    }
+
+    if (booking.userId !== userId) {
+      return { error: "Not authorized to cancel this booking." };
+    }
+
+    if (booking.status === "CANCELLED") {
+      return { error: "This booking is already cancelled." };
     }
 
     // Cancel booking
@@ -102,7 +120,7 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function Dashboard() {
-  const { user, bookings, locale } = useLoaderData<typeof loader>();
+  const { user, bookings, locale, companyName } = useLoaderData<typeof loader>();
   const t = translations[locale as Locale];
 
   const navigation = useNavigation();
@@ -135,7 +153,7 @@ export default function Dashboard() {
                 <Flame className="h-4.5 w-4.5 text-white" />
               </div>
               <span className="text-xl font-black uppercase text-white tracking-tight">
-                LEASIO<span className="text-orange-500 font-light">GP</span>
+                {companyName}
               </span>
             </Link>
 
@@ -237,7 +255,7 @@ export default function Dashboard() {
               {bookings.map((booking) => {
                 const isCancelled = booking.status === "CANCELLED";
                 const isConfirmed = booking.status === "CONFIRMED";
-                const isFutureDate = new Date(booking.date) >= new Date();
+                const isFutureDate = isTodayOrFuture(booking.date);
 
                 return (
                   <div 

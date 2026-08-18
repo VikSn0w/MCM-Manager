@@ -16,18 +16,32 @@ import {
   DollarSign, 
   Users, 
   Clock, 
-  Calendar 
+  Calendar ,
+  Layers,
+  UserPlus
 } from "lucide-react";
 
 export async function loader({ request }: Route.LoaderArgs) {
   await requireAdmin(request);
   const locale = await getLocale(request);
 
-  const championships = await prisma.championship.findMany({
-    orderBy: { createdAt: "desc" },
-  });
+  const [championships, fleetSize, slots] = await Promise.all([
+    prisma.championship.findMany({
+      orderBy: { createdAt: "desc" },
+      include: {
+        groups: {
+          orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+          include: { _count: { select: { entries: true } } },
+        },
+      },
+    }),
+    // Heats reuse the whole fleet, so one heat can never hold more riders than
+    // there are rentable bikes.
+    prisma.bike.count({ where: { status: "AVAILABLE" } }),
+    prisma.timeSlot.findMany({ orderBy: { time: "asc" }, select: { time: true, label: true } }),
+  ]);
 
-  return { championships, locale };
+  return { championships, locale, fleetSize, slots };
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -47,6 +61,100 @@ export async function action({ request }: Route.ActionArgs) {
     }
   }
 
+  // ---- Skill groups (heats) -------------------------------------------------
+
+  if (intent === "deleteGroup") {
+    const groupId = formData.get("groupId")?.toString();
+    if (!groupId) return { error: "Missing group ID." };
+
+    const entries = await prisma.bookingBike.count({ where: { championshipGroupId: groupId } });
+    if (entries > 0) {
+      return { error: `Cannot delete a group with ${entries} rider(s) in it. Move them to another group first.` };
+    }
+
+    await prisma.championshipGroup.delete({ where: { id: groupId } });
+    return { success: "Group removed." };
+  }
+
+  if (intent === "saveGroup" || intent === "seedGroups") {
+    const championshipId = formData.get("championshipId")?.toString();
+    if (!championshipId) return { error: "Missing championship ID." };
+
+    const championship = await prisma.championship.findUnique({ where: { id: championshipId } });
+    if (!championship) return { error: "That championship no longer exists." };
+
+    const fleetSize = await prisma.bike.count({ where: { status: "AVAILABLE" } });
+
+    if (intent === "seedGroups") {
+      // The four brackets used on the printed assignment sheet.
+      const defaults = ["Rookie", "Esperti", "Veloci", "Gruppo Misto"];
+      const existing = await prisma.championshipGroup.findMany({
+        where: { championshipId },
+        select: { name: true },
+      });
+      const taken = new Set(existing.map((g) => g.name.toLowerCase()));
+      const toCreate = defaults.filter((n) => !taken.has(n.toLowerCase()));
+
+      if (toCreate.length === 0) return { error: "Those groups already exist for this championship." };
+
+      await prisma.championshipGroup.createMany({
+        data: toCreate.map((n, i) => ({
+          championshipId,
+          name: n,
+          capacity: Math.max(1, fleetSize || 7),
+          sortOrder: defaults.indexOf(n),
+        })),
+      });
+      return { success: `Added ${toCreate.length} standard group(s).` };
+    }
+
+    const groupId = formData.get("groupId")?.toString() || null;
+    const groupName = formData.get("groupName")?.toString().trim();
+    const groupDescription = formData.get("groupDescription")?.toString().trim() || null;
+    const capacity = parseInt(formData.get("capacity")?.toString() || "0", 10);
+    const timeSlot = formData.get("timeSlot")?.toString().trim() || null;
+    const sortOrder = parseInt(formData.get("sortOrder")?.toString() || "0", 10);
+
+    if (!groupName) return { error: "Group name is required." };
+    if (!Number.isInteger(capacity) || capacity < 1) return { error: "Capacity must be at least 1." };
+    if (fleetSize > 0 && capacity > fleetSize) {
+      return { error: `Capacity cannot exceed the ${fleetSize} rentable bikes — a heat gives every rider a bike.` };
+    }
+    if (!Number.isInteger(sortOrder)) return { error: "Display order must be a whole number." };
+
+    if (timeSlot) {
+      const known = await prisma.timeSlot.findFirst({ where: { time: timeSlot } });
+      if (!known) return { error: `"${timeSlot}" is not one of the configured session slots.` };
+    }
+
+    try {
+      if (groupId) {
+        await prisma.championshipGroup.update({
+          where: { id: groupId },
+          data: { name: groupName, description: groupDescription, capacity, timeSlot, sortOrder },
+        });
+        return { success: "Group updated." };
+      }
+
+      await prisma.championshipGroup.create({
+        data: {
+          championshipId,
+          name: groupName,
+          description: groupDescription,
+          capacity,
+          timeSlot,
+          sortOrder,
+        },
+      });
+      return { success: "Group added." };
+    } catch (e: any) {
+      if (e?.code === "P2002") {
+        return { error: `This championship already has a group called "${groupName}".` };
+      }
+      return { error: `Could not save the group: ${e.message}` };
+    }
+  }
+
   const name = formData.get("name")?.toString().trim();
   const description = formData.get("description")?.toString().trim();
   const price = parseFloat(formData.get("price")?.toString() || "0");
@@ -54,9 +162,29 @@ export async function action({ request }: Route.ActionArgs) {
   const sessionsCount = parseInt(formData.get("sessionsCount")?.toString() || "3", 10);
   const isAvailable = formData.get("isAvailable") === "true";
   const fixedDate = formData.get("fixedDate")?.toString().trim() || null;
+  const lockMode = formData.get("lockMode")?.toString() === "TIME_WINDOW" ? "TIME_WINDOW" : "FULL_DAY";
+  // Multi-select: every reserved slot arrives as its own "lockedHours" entry.
+  const lockedHoursList = formData.getAll("lockedHours").map((h) => h.toString().trim()).filter(Boolean);
+  const lockedHours = lockedHoursList.length > 0 ? lockedHoursList.join(", ") : null;
 
   if (!name || !description || isNaN(price) || price <= 0 || isNaN(minRacers) || minRacers <= 0 || isNaN(sessionsCount) || sessionsCount <= 0) {
     return { error: "Please enter valid values for all fields." };
+  }
+
+  if (fixedDate && !/^\d{4}-\d{2}-\d{2}$/.test(fixedDate)) {
+    return { error: "Event date must be in YYYY-MM-DD format." };
+  }
+
+  // A window that reserves nothing would quietly behave like no lock at all.
+  if (fixedDate && lockMode === "TIME_WINDOW" && lockedHoursList.length === 0) {
+    return { error: "Pick at least one session slot for the reserved time window." };
+  }
+
+  if (lockedHoursList.length > 0) {
+    const known = await prisma.timeSlot.findMany({ select: { time: true } });
+    const knownTimes = new Set(known.map((k) => k.time));
+    const unknown = lockedHoursList.find((h) => !knownTimes.has(h));
+    if (unknown) return { error: `"${unknown}" is not a configured session slot.` };
   }
 
   try {
@@ -70,6 +198,8 @@ export async function action({ request }: Route.ActionArgs) {
           sessionsCount,
           isAvailable,
           fixedDate,
+          lockMode,
+          lockedHours,
         },
       });
       return { success: "Championship format created successfully." };
@@ -87,6 +217,8 @@ export async function action({ request }: Route.ActionArgs) {
           sessionsCount,
           isAvailable,
           fixedDate,
+          lockMode,
+          lockedHours,
         },
       });
       return { success: "Championship format updated successfully." };
@@ -99,7 +231,7 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function AdminChampionships() {
-  const { championships, locale } = useLoaderData<typeof loader>();
+  const { championships, locale, fleetSize, slots } = useLoaderData<typeof loader>();
   const actionData = useActionData() as { error?: string; success?: string } | undefined;
   const navigation = useNavigation();
   const isSaving = navigation.state === "submitting";
@@ -109,14 +241,20 @@ export default function AdminChampionships() {
   // UI state for dialogs
   const [isOpen, setIsOpen] = useState(false);
   const [editingChamp, setEditingChamp] = useState<any>(null);
+  // Group editor: which championship, and which group (null = new).
+  const [groupDialog, setGroupDialog] = useState<{ champId: string; group: any | null } | null>(null);
+  // Track reservation controls inside the championship dialog.
+  const [lockMode, setLockMode] = useState<"FULL_DAY" | "TIME_WINDOW">("FULL_DAY");
 
   const handleOpenCreate = () => {
     setEditingChamp(null);
+    setLockMode("FULL_DAY");
     setIsOpen(true);
   };
 
   const handleOpenEdit = (champ: any) => {
     setEditingChamp(champ);
+    setLockMode(champ.lockMode === "TIME_WINDOW" ? "TIME_WINDOW" : "FULL_DAY");
     setIsOpen(true);
   };
 
@@ -191,6 +329,12 @@ export default function AdminChampionships() {
                         <div className="flex items-center space-x-1 mt-1 text-[10px] text-orange-400 font-bold uppercase font-mono">
                           <Calendar className="h-3.5 w-3.5" />
                           <span>{locale === "en" ? `Event Date: ${champ.fixedDate}` : `Data Evento: ${champ.fixedDate}`}</span>
+                          <span className="text-slate-600">·</span>
+                          <span className="text-slate-400 normal-case">
+                            {champ.lockMode === "TIME_WINDOW"
+                              ? (champ.lockedHours || (locale === "en" ? "no slots reserved" : "nessun orario riservato"))
+                              : (locale === "en" ? "full day" : "intera giornata")}
+                          </span>
                         </div>
                       )}
                     </div>
@@ -230,6 +374,87 @@ export default function AdminChampionships() {
                       </span>
                       <span className="text-sm font-black text-white">{champ.sessionsCount} {locale === "en" ? "laps" : "turni"}</span>
                     </div>
+                  </div>
+
+                  {/* Skill groups / heats */}
+                  <div className="pt-3 border-t border-slate-850 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] text-slate-500 uppercase tracking-widest flex items-center space-x-1">
+                        <Layers className="h-3.5 w-3.5" />
+                        <span>{locale === "en" ? "Skill Groups" : "Gruppi di Livello"}</span>
+                      </span>
+                      <button
+                        onClick={() => setGroupDialog({ champId: champ.id, group: null })}
+                        className="text-[9px] font-extrabold uppercase text-orange-500 hover:text-orange-400 flex items-center space-x-1 cursor-pointer"
+                      >
+                        <Plus className="h-3 w-3" />
+                        <span>{locale === "en" ? "Add" : "Aggiungi"}</span>
+                      </button>
+                    </div>
+
+                    {champ.groups.length === 0 ? (
+                      <div className="space-y-2">
+                        <p className="text-[10px] text-slate-500 leading-normal">
+                          {locale === "en"
+                            ? "No groups yet. Riders cannot pick a level until this championship has at least one."
+                            : "Nessun gruppo. I piloti non possono scegliere un livello finché non ne esiste almeno uno."}
+                        </p>
+                        <Form method="post">
+                          <input type="hidden" name="intent" value="seedGroups" />
+                          <input type="hidden" name="championshipId" value={champ.id} />
+                          <button
+                            type="submit"
+                            className="w-full py-2 bg-slate-950 hover:bg-slate-850 border border-slate-850 text-slate-300 hover:text-white rounded-lg text-[9px] font-extrabold uppercase tracking-wider flex justify-center items-center space-x-1.5 transition-colors cursor-pointer"
+                          >
+                            <UserPlus className="h-3 w-3" />
+                            <span>{locale === "en" ? "Add standard groups" : "Aggiungi gruppi standard"}</span>
+                          </button>
+                        </Form>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {champ.groups.map((g: any) => {
+                          const full = g._count.entries >= g.capacity;
+                          return (
+                            <div key={g.id} className="bg-slate-950 border border-slate-900 rounded-lg px-2.5 py-1.5 flex items-center justify-between gap-2">
+                              <div className="min-w-0">
+                                <span className="block text-[10px] font-bold text-white truncate">{g.name}</span>
+                                {g.timeSlot && (
+                                  <span className="block text-[9px] text-slate-500 font-mono">{g.timeSlot}</span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border ${
+                                  full
+                                    ? "bg-red-950/40 text-red-400 border-red-500/20"
+                                    : "bg-slate-900 text-slate-400 border-slate-800"
+                                }`}>
+                                  {g._count.entries}/{g.capacity}
+                                </span>
+                                <button
+                                  onClick={() => setGroupDialog({ champId: champ.id, group: g })}
+                                  className="text-slate-500 hover:text-white cursor-pointer"
+                                  title={locale === "en" ? "Edit group" : "Modifica gruppo"}
+                                >
+                                  <Edit3 className="h-3 w-3" />
+                                </button>
+                                <Form method="post" onSubmit={(e) => {
+                                  if (!confirm(locale === "en" ? `Delete group "${g.name}"?` : `Eliminare il gruppo "${g.name}"?`)) {
+                                    e.preventDefault();
+                                  }
+                                }}>
+                                  <input type="hidden" name="intent" value="deleteGroup" />
+                                  <input type="hidden" name="groupId" value={g.id} />
+                                  <button type="submit" className="text-red-500/70 hover:text-red-400 cursor-pointer flex" title={locale === "en" ? "Delete group" : "Elimina gruppo"}>
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
+                                </Form>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
 
                   {/* Actions */}
@@ -382,6 +607,87 @@ export default function AdminChampionships() {
                 </span>
               </div>
 
+              {/* Track reservation on the event date */}
+              <div className="space-y-2.5 bg-slate-950/50 border border-slate-850 rounded-2xl p-4">
+                <label className="block text-[10px] uppercase text-slate-400 font-bold tracking-widest">
+                  {locale === "en" ? "Track Reservation" : "Riserva Pista"}
+                </label>
+                <p className="text-[9px] text-slate-500 leading-normal">
+                  {locale === "en"
+                    ? "Applies only when an event date is set. Ordinary bookings are refused for whatever this reserves."
+                    : "Vale solo con una data evento impostata. Le prenotazioni ordinarie vengono rifiutate su ciò che viene riservato."}
+                </p>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setLockMode("FULL_DAY")}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      lockMode === "FULL_DAY"
+                        ? "bg-slate-950 border-orange-500/60 text-white"
+                        : "bg-slate-950/40 hover:bg-slate-950/80 border-slate-900 text-slate-500"
+                    }`}
+                  >
+                    <span className="block font-bold text-[10px] uppercase">
+                      {locale === "en" ? "Entire day" : "Intera giornata"}
+                    </span>
+                    <span className="block text-[9px] text-slate-500 mt-0.5 leading-normal">
+                      {locale === "en" ? "Closes the circuit to all other bookings." : "Chiude la pista a ogni altra prenotazione."}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setLockMode("TIME_WINDOW")}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      lockMode === "TIME_WINDOW"
+                        ? "bg-slate-950 border-orange-500/60 text-white"
+                        : "bg-slate-950/40 hover:bg-slate-950/80 border-slate-900 text-slate-500"
+                    }`}
+                  >
+                    <span className="block font-bold text-[10px] uppercase">
+                      {locale === "en" ? "Time window" : "Finestra oraria"}
+                    </span>
+                    <span className="block text-[9px] text-slate-500 mt-0.5 leading-normal">
+                      {locale === "en" ? "Reserves only the slots you pick." : "Riserva solo gli orari selezionati."}
+                    </span>
+                  </button>
+                </div>
+
+                <input type="hidden" name="lockMode" value={lockMode} />
+
+                {lockMode === "TIME_WINDOW" && (
+                  <div className="space-y-1.5 pt-1">
+                    <span className="block text-[9px] uppercase text-slate-400 font-bold tracking-widest">
+                      {locale === "en" ? "Reserved slots" : "Orari riservati"}
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      {slots.map((slot) => {
+                        const current: string[] = (editingChamp?.lockedHours || "")
+                          .split(",")
+                          .map((h: string) => h.trim())
+                          .filter(Boolean);
+                        return (
+                          <label
+                            key={slot.time}
+                            className="flex items-center gap-1.5 bg-slate-900 border border-slate-850 rounded-lg px-2.5 py-1.5 cursor-pointer hover:border-slate-800"
+                          >
+                            <input
+                              type="checkbox"
+                              name="lockedHours"
+                              value={slot.time}
+                              defaultChecked={current.includes(slot.time)}
+                              className="h-3 w-3 rounded bg-slate-950 border-slate-800 text-orange-500 focus:ring-orange-500/30"
+                            />
+                            <span className="text-[10px] font-mono font-bold text-slate-300">{slot.time}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* isAvailable toggler */}
               <div className="space-y-1.5">
                 <label className="block text-[10px] uppercase text-slate-400 font-bold tracking-widest">{locale === "en" ? "Paddock Availability Status" : "Stato Disponibilità Paddock"}</label>
@@ -413,6 +719,137 @@ export default function AdminChampionships() {
                 </button>
               </div>
 
+            </Form>
+          </div>
+        </div>
+      )}
+
+
+      {/* Skill group editor */}
+      {groupDialog && (
+        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setGroupDialog(null)} />
+
+          <div className="relative bg-slate-900 border border-slate-850 w-full max-w-md rounded-3xl p-6 sm:p-8 shadow-2xl space-y-5">
+            <button
+              onClick={() => setGroupDialog(null)}
+              className="absolute top-4 right-4 text-slate-500 hover:text-white p-1 bg-slate-950 border border-slate-880 hover:border-slate-800 rounded-lg transition-colors cursor-pointer"
+            >
+              <X className="h-4.5 w-4.5" />
+            </button>
+
+            <div>
+              <h2 className="text-lg font-black uppercase text-white">
+                {groupDialog.group
+                  ? (locale === "en" ? "Edit Group" : "Modifica Gruppo")
+                  : (locale === "en" ? "New Skill Group" : "Nuovo Gruppo di Livello")}
+              </h2>
+              <p className="text-[11px] text-slate-400 mt-1 leading-normal">
+                {locale === "en"
+                  ? "Each group races as its own heat, so the whole fleet is available again in every group."
+                  : "Ogni gruppo corre nella propria manche, quindi l'intera flotta torna disponibile in ogni gruppo."}
+              </p>
+            </div>
+
+            <Form method="post" className="space-y-4" onSubmit={() => setGroupDialog(null)}>
+              <input type="hidden" name="intent" value="saveGroup" />
+              <input type="hidden" name="championshipId" value={groupDialog.champId} />
+              {groupDialog.group && <input type="hidden" name="groupId" value={groupDialog.group.id} />}
+
+              <div className="space-y-1.5">
+                <label className="block text-[10px] uppercase text-slate-400 font-bold tracking-wider">
+                  {locale === "en" ? "Group Name" : "Nome Gruppo"}
+                </label>
+                <input
+                  type="text"
+                  name="groupName"
+                  required
+                  defaultValue={groupDialog.group?.name || ""}
+                  placeholder="Rookie / Esperti / Veloci / Gruppo Misto"
+                  className="w-full bg-slate-950/80 border border-slate-800 focus:border-orange-500 text-white rounded-xl py-3 px-4 outline-none text-xs font-semibold"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-[10px] uppercase text-slate-400 font-bold tracking-wider">
+                  {locale === "en" ? "Description (optional)" : "Descrizione (facoltativa)"}
+                </label>
+                <input
+                  type="text"
+                  name="groupDescription"
+                  defaultValue={groupDialog.group?.description || ""}
+                  placeholder={locale === "en" ? "e.g. First time on an Ohvale" : "es. Prima volta su Ohvale"}
+                  className="w-full bg-slate-950/80 border border-slate-800 focus:border-orange-500 text-white rounded-xl py-3 px-4 outline-none text-xs font-semibold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] uppercase text-slate-400 font-bold tracking-wider">
+                    {locale === "en" ? "Riders per heat" : "Piloti per manche"}
+                  </label>
+                  <input
+                    type="number"
+                    name="capacity"
+                    required
+                    min={1}
+                    max={Math.max(1, fleetSize)}
+                    defaultValue={groupDialog.group?.capacity ?? Math.max(1, fleetSize)}
+                    className="w-full bg-slate-950/80 border border-slate-800 focus:border-orange-500 text-white rounded-xl py-3 px-4 outline-none text-xs font-semibold"
+                  />
+                  <p className="text-[9px] text-slate-500">
+                    {locale === "en" ? `Max ${fleetSize} (rentable bikes)` : `Max ${fleetSize} (moto noleggiabili)`}
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] uppercase text-slate-400 font-bold tracking-wider">
+                    {locale === "en" ? "Display order" : "Ordine"}
+                  </label>
+                  <input
+                    type="number"
+                    name="sortOrder"
+                    required
+                    defaultValue={groupDialog.group?.sortOrder ?? 0}
+                    className="w-full bg-slate-950/80 border border-slate-800 focus:border-orange-500 text-white rounded-xl py-3 px-4 outline-none text-xs font-semibold"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-[10px] uppercase text-slate-400 font-bold tracking-wider">
+                  {locale === "en" ? "Heat time (optional)" : "Orario manche (facoltativo)"}
+                </label>
+                <select
+                  name="timeSlot"
+                  defaultValue={groupDialog.group?.timeSlot || ""}
+                  className="w-full bg-slate-950/80 border border-slate-800 focus:border-orange-500 text-white rounded-xl py-3 px-4 outline-none text-xs font-semibold cursor-pointer"
+                >
+                  <option value="">{locale === "en" ? "Not scheduled" : "Non programmato"}</option>
+                  {slots.map((slot) => (
+                    <option key={slot.time} value={slot.time}>
+                      {slot.time} — {slot.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-2 text-[10px] font-extrabold uppercase tracking-wider">
+                <button
+                  type="button"
+                  onClick={() => setGroupDialog(null)}
+                  className="bg-slate-950 border border-slate-850 text-slate-400 hover:text-white px-5 py-3 rounded-xl transition-colors cursor-pointer"
+                >
+                  {locale === "en" ? "Cancel" : "Annulla"}
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="bg-orange-600 text-white px-5 py-3 rounded-xl hover:bg-orange-500 shadow-xl shadow-orange-600/10 transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+                >
+                  {groupDialog.group ? (locale === "en" ? "Save Group" : "Salva Gruppo") : (locale === "en" ? "Add Group" : "Aggiungi Gruppo")}
+                </button>
+              </div>
             </Form>
           </div>
         </div>

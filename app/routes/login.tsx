@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "../utils/db.server";
 import { createUserSession } from "../utils/auth.server";
 import { getLocale } from "../utils/locale.server";
+import { checkRateLimit, resetRateLimit, getClientIp } from "../utils/rate-limit.server";
 import { translations, type Locale } from "../utils/translations";
 import { LogIn, Flag, AlertTriangle, ChevronRight } from "lucide-react";
 
@@ -22,9 +23,20 @@ export async function action({ request }: Route.ActionArgs) {
     return { error: "Invalid form fields." };
   }
 
-  // Find user
+  const normalisedEmail = email.trim().toLowerCase();
+
+  // Throttle per IP+account so credential stuffing cannot brute force a password.
+  const rateKey = `login:${getClientIp(request)}:${normalisedEmail}`;
+  const rate = checkRateLimit(rateKey, 10, 15 * 60 * 1000);
+  if (!rate.allowed) {
+    return {
+      error: `Too many failed sign-in attempts. Try again in ${Math.ceil(rate.retryAfterSeconds / 60)} minute(s).`,
+    };
+  }
+
+  // Find user (emails are stored normalised to lowercase)
   const user = await prisma.user.findUnique({
-    where: { email },
+    where: { email: normalisedEmail },
   });
 
   if (!user) {
@@ -36,6 +48,8 @@ export async function action({ request }: Route.ActionArgs) {
   if (!isCorrectPassword) {
     return { error: "Invalid email or password." };
   }
+
+  resetRateLimit(rateKey);
 
   // If the user is an admin and the redirect target is dashboard or home, route to admin panel
   let finalRedirect = redirectTo;
@@ -71,7 +85,7 @@ export default function Login() {
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10 text-center">
         <div className="inline-block mb-6 transition-transform hover:scale-[1.02]">
-          <img src="/logoleasio.png" alt="Leasio" className="h-10 mx-auto object-contain" />
+          <img src="/images/logo.webp" alt="MCM Racing School" className="h-10 mx-auto object-contain" />
         </div>
         <h2 className="text-center text-2xl sm:text-3xl font-extrabold text-white tracking-tight uppercase">
           {t.signinExistingTitle}
@@ -108,7 +122,7 @@ export default function Login() {
                   type="email"
                   autoComplete="email"
                   required
-                  placeholder="racer@leasio.com"
+                  placeholder="racer@example.com"
                   className="w-full bg-slate-950/80 border border-slate-800 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 text-white rounded-xl py-3 px-4 shadow-inner placeholder-slate-600 transition-all text-sm outline-none"
                 />
               </div>
@@ -119,9 +133,9 @@ export default function Login() {
                 <label htmlFor="password" className="block text-sm font-semibold text-slate-300 uppercase tracking-wider">
                   {t.password}
                 </label>
-                <a href="#" className="text-xs font-semibold text-orange-500 hover:text-orange-400 transition-colors">
-                  {locale === "en" ? "Forgot Password?" : "Password dimenticata?"}
-                </a>
+                <Link to="/forgot-password" className="text-xs font-semibold text-orange-500 hover:text-orange-400 transition-colors">
+                  {t.forgotPassword}
+                </Link>
               </div>
               <div className="mt-2 relative">
                 <input
@@ -170,19 +184,6 @@ export default function Login() {
               </button>
             </div>
           </Form>
-
-          {/* Quick account helper card */}
-          <div className="mt-6 bg-slate-950/60 border border-slate-800 p-4 rounded-xl text-xs space-y-1.5 text-slate-400">
-            <p className="font-semibold text-slate-300 text-center uppercase tracking-wide mb-1">{t.demoCredentials}</p>
-            <div className="flex justify-between">
-              <span>Customer: <strong className="text-white">racer@leasio.com</strong></span>
-              <span>Pass: <strong className="text-orange-400">racer123</strong></span>
-            </div>
-            <div className="flex justify-between border-t border-slate-900 pt-1.5">
-              <span>Admin: <strong className="text-white">admin@leasio.com</strong></span>
-              <span>Pass: <strong className="text-orange-400">admin123</strong></span>
-            </div>
-          </div>
 
           {/* Footer badge */}
           <div className="mt-8 pt-6 border-t border-slate-800/80 flex justify-center items-center space-x-2 text-xs text-slate-500 uppercase tracking-widest">

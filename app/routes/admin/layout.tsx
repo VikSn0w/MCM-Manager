@@ -25,15 +25,21 @@ export async function loader({ request }: Route.LoaderArgs) {
   const adminUser = await requireAdmin(request);
   const locale = await getLocale(request);
 
-  // Quick header stats
-  const bikesCount = await prisma.bike.count({});
-  const activeBookingsCount = await prisma.booking.count({ where: { status: "CONFIRMED" } });
-  const pendingBookingsCount = await prisma.booking.count({ where: { status: "PENDING" } });
-  const dayConfigsCount = await prisma.dayConfig.count({});
+  // These header stats are independent of one another; issued together they
+  // cost one round trip instead of five.
+  const [bikesCount, activeBookingsCount, pendingBookingsCount, dayConfigsCount, config] =
+    await Promise.all([
+      prisma.bike.count({}),
+      prisma.booking.count({ where: { status: "CONFIRMED" } }),
+      prisma.booking.count({ where: { status: "PENDING" } }),
+      prisma.dayConfig.count({}),
+      prisma.companyConfig.findUnique({
+        where: { id: "single-config" },
+        select: { companyName: true, logoUrl: true, circuitName: true },
+      }),
+    ]);
 
-  const companyConfig = await prisma.companyConfig.findUnique({
-    where: { id: "single-config" }
-  }) || {
+  const companyConfig = config || {
     companyName: "MCM Racing School",
     logoUrl: "/images/ohvale_gp_one_1780331510373.png",
     circuitName: "Circuito Internazionale del Volturno"
@@ -55,6 +61,7 @@ export default function AdminLayout() {
     { name: locale === "en" ? "Reservations" : "Prenotazioni", path: "/admin/bookings", icon: Receipt },
     { name: locale === "en" ? "Ohvale Fleet" : "Flotta Ohvale", path: "/admin/bikes", icon: Flag },
     { name: locale === "en" ? "Championships" : "Campionati", path: "/admin/championships", icon: Flag },
+    { name: locale === "en" ? "Race Grid" : "Griglia Gara", path: "/admin/grid", icon: Grid },
     { name: locale === "en" ? "Academy Lessons" : "Lezioni Academy", path: "/admin/lessons", icon: BookOpen },
     { name: locale === "en" ? "Tariff Scheduler" : "Tariffe Settimanali", path: "/admin/tariffs", icon: DollarSign },
     { name: locale === "en" ? "Calendar Capacity" : "Calendario Pista", path: "/admin/calendar", icon: Calendar },

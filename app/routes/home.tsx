@@ -32,7 +32,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     prisma.companyConfig.findUnique({
       where: { id: "single-config" }
     }).then(conf => conf || {
-      companyName: "Leasio Paddock Rentals",
+      companyName: "MCM Racing School",
       logoUrl: "/images/ohvale_gp_one_1780331510373.png",
       circuitName: "Autodromo di Franciacorta",
       googleMapsUrl: ""
@@ -54,7 +54,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export function meta({ data }: Route.MetaArgs) {
-  const companyName = data?.companyConfig?.companyName || "Leasio Paddock Rentals";
+  const companyName = data?.companyConfig?.companyName || "MCM Racing School";
   const circuitName = data?.companyConfig?.circuitName || "Autodromo di Franciacorta";
   return [
     { title: `${companyName} - Premium Ohvale GP Track Rentals` },
@@ -112,7 +112,7 @@ export default function Home() {
               <img 
                 id="nav-logo-fallback"
                 src="/logosmall.png"
-                alt="Leasio Logo"
+                alt={companyConfig.companyName}
                 className={`${companyConfig.logoUrl ? "hidden" : ""} h-8 w-auto object-contain`}
               />
               <span className="text-xl font-black tracking-tighter uppercase text-white">

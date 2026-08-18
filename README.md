@@ -1,87 +1,127 @@
-# Welcome to React Router!
+# MCM Manager
 
-A modern, production-ready template for building full-stack React applications using React Router.
+Booking and back-office system for the Leasio / MCM Racing School paddock: track-day
+reservations, Ohvale fleet management, championship packages, tariffs and academy lessons.
 
-[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/remix-run/react-router-templates/tree/main/default)
+Built with React Router 7 (SSR), Prisma + PostgreSQL, Tailwind 4 and Resend.
 
-## Features
-
-- 🚀 Server-side rendering
-- ⚡️ Hot Module Replacement (HMR)
-- 📦 Asset bundling and optimization
-- 🔄 Data loading and mutations
-- 🔒 TypeScript by default
-- 🎉 TailwindCSS for styling
-- 📖 [React Router docs](https://reactrouter.com/)
-
-## Getting Started
-
-### Installation
-
-Install the dependencies:
+## Getting started
 
 ```bash
 npm install
 ```
 
-### Development
+Copy the environment template and fill it in:
 
-Start the development server with HMR:
+```bash
+cp .env.example .env
+```
+
+`SESSION_SECRET` is required — the app refuses to start without it, so that a
+predictable signing key can never reach production. Generate one with:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Push the schema and seed the database:
+
+```bash
+npx prisma db push
+npm run seed
+```
+
+Start the dev server at `http://localhost:5173`:
 
 ```bash
 npm run dev
 ```
 
-Your application will be available at `http://localhost:5173`.
+## Scripts
 
-## Building for Production
+| Script | Purpose |
+| --- | --- |
+| `npm run dev` | Dev server with HMR |
+| `npm run build` | Production build into `build/` |
+| `npm run start` | Serve the production build |
+| `npm run typecheck` | Route typegen + `tsc` |
+| `npm test` | Run the unit tests |
+| `npm run seed` | **Destroys all data** and reseeds. Requires `SEED_CONFIRM=wipe`. |
 
-Create a production build:
+## Application structure
 
-```bash
-npm run build
-```
+- `app/routes/` — public pages: home, login, signup, booking flow, dashboard, order pass, academy
+- `app/routes/admin/` — back office behind `requireAdmin`: bookings, fleet, tariffs, calendar, championships, lessons, settings
+- `app/utils/` — server-side helpers: auth/sessions, Prisma client, email, QR codes, locale, translations
+- `prisma/schema.prisma` — data model
+
+### Booking lifecycle
+
+A customer booking is created with status `PENDING`. The back office confirms or
+cancels it from `/admin/bookings` or the order page, and each transition emails
+both the customer and every admin account.
+
+Availability and pricing are resolved entirely on the server inside a single
+`Serializable` transaction, so concurrent requests cannot overbook a slot or be
+assigned the same bike. Prices submitted by the client are ignored.
+
+### Password reset
+
+`/forgot-password` issues a single-use link valid for 60 minutes. Only the
+SHA-256 digest of the token is stored, requesting a new link invalidates any
+outstanding one, and the response is identical whether or not the address is
+registered — so the endpoint cannot be used to discover who has an account.
+
+Completing a reset stamps `User.passwordChangedAt`, which invalidates every
+session issued before that moment. Sessions created before this mechanism
+existed carry no issued-at marker and are grandfathered in; they expire
+naturally within the 30-day cookie lifetime.
+
+Spent and long-expired tokens can be cleared with `purgeStaleResetTokens()`
+from `app/utils/password-reset.server.ts` if you want to run periodic housekeeping.
 
 ## Deployment
 
-### Docker Deployment
-
-To build and run using Docker:
+### Docker
 
 ```bash
-docker build -t my-app .
-
-# Run the container
-docker run -p 3000:3000 my-app
+docker build -t mcm-manager .
+docker run -p 3000:3000 --env-file .env mcm-manager
 ```
 
-The containerized application can be deployed to any platform that supports Docker, including:
+### Manual
 
-- AWS ECS
-- Google Cloud Run
-- Azure Container Apps
-- Digital Ocean App Platform
-- Fly.io
-- Railway
+Deploy the output of `npm run build` alongside `package.json` and
+`package-lock.json`, then run `npm run start`. Provide the environment variables
+from `.env.example` through your platform's secret store rather than a committed file.
 
-### DIY Deployment
+## Schema changes
 
-If you're familiar with deploying Node applications, the built-in app server is production-ready.
+The schema is under versioned migrations in `prisma/migrations`. `00000000000000_init`
+is a baseline of the database as it stood when migrations were introduced; it is
+marked applied and must never be run against the existing database.
 
-Make sure to deploy the output of `npm run build`
+Develop a change against a scratch database:
 
-```
-├── package.json
-├── package-lock.json (or pnpm-lock.yaml, or bun.lockb)
-├── build/
-│   ├── client/    # Static assets
-│   └── server/    # Server-side code
+```bash
+npx prisma migrate dev --name what_changed
 ```
 
-## Styling
+Apply pending migrations to a deployed environment:
 
-This template comes with [Tailwind CSS](https://tailwindcss.com/) already configured for a simple default starting experience. You can use whatever CSS framework you prefer.
+```bash
+npx prisma migrate deploy
+```
 
----
+`migrate deploy` needs no shadow database, so it is the safe command to run
+against production. Avoid `prisma db push` from here on — it changes the
+database without leaving a migration behind, and the two will drift apart.
 
-Built with ❤️ using React Router.
+## Seeding
+
+`prisma/seed.ts` **deletes every row in every table** before reseeding. It refuses
+to run unless you confirm, and refuses outright when `NODE_ENV=production`:
+
+```bash
+SEED_CONFIRM=wipe npm run seed
+```

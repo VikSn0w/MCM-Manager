@@ -8,34 +8,44 @@
     "start": "react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc",
     "postinstall": "prisma generate",
-    "seed": "npx tsx prisma/seed.ts"
+    "seed": "npx tsx prisma/seed.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
-    "@react-router/node": "7.16.0",
-    "@react-router/serve": "7.16.0",
+    "@react-router/node": "7.18.2",
+    "@react-router/serve": "7.18.2",
     "bcryptjs": "^3.0.3",
-    "html-to-docx": "^1.8.0",
-    "isbot": "^5.1.36",
+    "isbot": "^5",
     "lucide-react": "^1.17.0",
-    "marked": "^18.0.5",
+    "qrcode": "^1.5.4",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "react-router": "7.16.0",
+    "react-router": "7.18.2",
     "resend": "^6.12.4"
   },
   "devDependencies": {
-    "@react-router/dev": "7.16.0",
+    "@react-router/dev": "7.18.2",
     "@tailwindcss/vite": "^4.2.2",
-    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "prisma": "^5.22.0",
-    "puppeteer-core": "^25.1.0",
     "tailwindcss": "^4.2.2",
     "tsx": "^4.22.4",
     "typescript": "^5.9.3",
-    "vite": "^8.0.3"
+    "vite": "^8.0.3",
+    "vitest": "^4.1.10"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "prisma@5.22.0": true,
+    "@prisma/client@5.22.0": true,
+    "@prisma/engines@5.22.0": true
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }

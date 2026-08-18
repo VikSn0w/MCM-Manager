@@ -62,7 +62,7 @@ export const translations = {
     unleashRacer: "Unleash The Racer Inside",
     unleashSub: "Full logistics, paddock pits, and professional support included. Secure your date now.",
     startReservation: "Start Reservation",
-    copyright: "Leasio Track Systems © 2026",
+    copyright: "MCM Racing School © 2026",
 
     // Booking Wizard
     step1Header: "Date Selection & Crew Size",
@@ -116,7 +116,7 @@ export const translations = {
     // Booking Success
     bookingConfirmed: "Booking Confirmed!",
     officialPaddockBadge: "Official Ohvale GP Paddock Entry",
-    paddockReceipt: "Leasio Track Receipt",
+    paddockReceipt: "Paddock Receipt",
     bookingId: "Booking ID",
     trackDate: "Track Date",
     ridersAndSessions: "Riders & Sessions",
@@ -156,7 +156,7 @@ export const translations = {
     emailAddress: "Email Address",
     password: "Password",
     confirmPassword: "Confirm Password",
-    acceptTerms: "I accept the Leasio",
+    acceptTerms: "I accept the",
     safetyRegulations: "Track Safety Regulations",
     buttonCompleteSignup: "Complete Signup",
     buttonPreparingProfile: "Preparing Profile...",
@@ -167,6 +167,25 @@ export const translations = {
     buttonAuthorizingRacer: "Authorizing Racer...",
     demoCredentials: "Paddock Demo Credentials",
     fimBadge: "FIM Homologated Booking System",
+
+    // Password reset
+    forgotPassword: "Forgot Password?",
+    forgotPasswordTitle: "Reset Your Password",
+    forgotPasswordSubtitle: "Enter the email tied to your racer profile and we will send you a reset link.",
+    forgotPasswordSent: "If that email matches a racer profile, a reset link is on its way. The link expires in 60 minutes.",
+    sendResetLink: "Send Reset Link",
+    sendingResetLink: "Sending Link...",
+    backToLogin: "Back to Sign In",
+    resetPasswordTitle: "Choose a New Password",
+    resetPasswordSubtitle: "Pick a new password for your racer profile.",
+    resetLinkInvalidTitle: "This reset link is no longer valid.",
+    resetLinkInvalidBody: "Reset links expire after 60 minutes and can only be used once. Request a fresh one to continue.",
+    requestNewLink: "Request a New Link",
+    newPassword: "New Password",
+    passwordMinHint: "At least {n} characters.",
+    resetSignsOutOthers: "Updating your password signs out every other device currently using your profile.",
+    updatePassword: "Update Password",
+    updatingPassword: "Updating Password...",
   },
   it: {
     // Navigation
@@ -229,7 +248,7 @@ export const translations = {
     unleashRacer: "Scatena il Pilota che è in Te",
     unleashSub: "Logistica box, paddock pits e supporto meccanico professionale inclusi. Blocca la tua data.",
     startReservation: "Inizia Prenotazione",
-    copyright: "Leasio Track Systems © 2026",
+    copyright: "MCM Racing School © 2026",
 
     // Booking Wizard
     step1Header: "Data e Numero Piloti",
@@ -283,7 +302,7 @@ export const translations = {
     // Booking Success
     bookingConfirmed: "Prenotazione Confermata!",
     officialPaddockBadge: "Pass d'Ingresso Paddock Ufficiale",
-    paddockReceipt: "Ricevuta Pista Leasio",
+    paddockReceipt: "Ricevuta Pista",
     bookingId: "ID Prenotazione",
     trackDate: "Data Turni",
     ridersAndSessions: "Piloti e Turni",
@@ -334,5 +353,24 @@ export const translations = {
     buttonAuthorizingRacer: "Autorizzazione Pilota...",
     demoCredentials: "Credenziali Demo Paddock",
     fimBadge: "Sistema Prenotazione Omologato FIM",
+
+    // Password reset
+    forgotPassword: "Password dimenticata?",
+    forgotPasswordTitle: "Reimposta la Password",
+    forgotPasswordSubtitle: "Inserisci l'email del tuo profilo pilota e ti invieremo un link per reimpostare la password.",
+    forgotPasswordSent: "Se l'email corrisponde a un profilo pilota, il link di reimpostazione è in arrivo. Il link scade tra 60 minuti.",
+    sendResetLink: "Invia il Link",
+    sendingResetLink: "Invio in corso...",
+    backToLogin: "Torna all'Accesso",
+    resetPasswordTitle: "Scegli una Nuova Password",
+    resetPasswordSubtitle: "Imposta una nuova password per il tuo profilo pilota.",
+    resetLinkInvalidTitle: "Questo link di reimpostazione non è più valido.",
+    resetLinkInvalidBody: "I link scadono dopo 60 minuti e possono essere usati una sola volta. Richiedine uno nuovo per continuare.",
+    requestNewLink: "Richiedi un Nuovo Link",
+    newPassword: "Nuova Password",
+    passwordMinHint: "Almeno {n} caratteri.",
+    resetSignsOutOthers: "Aggiornando la password verrai disconnesso da tutti gli altri dispositivi che usano il tuo profilo.",
+    updatePassword: "Aggiorna Password",
+    updatingPassword: "Aggiornamento...",
   }
 };

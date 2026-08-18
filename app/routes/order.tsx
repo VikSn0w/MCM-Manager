@@ -4,8 +4,12 @@ import type { Route } from "./+types/order";
 import { requireUserId, getUser } from "../utils/auth.server";
 import { prisma } from "../utils/db.server";
 import { getLocale } from "../utils/locale.server";
+import { buildQrDataUri } from "../utils/qr.server";
+import { bikeDisplayName } from "../utils/bike";
 import { sendBookingConfirmedEmail, sendBookingCancelledEmail } from "../utils/email.server";
 import { translations, type Locale } from "../utils/translations";
+import { isTodayOrFuture } from "../utils/dates";
+import { getSessionsBasePrice, roundMoney } from "../utils/pricing";
 import { 
   Calendar, 
   Flag, 
@@ -23,18 +27,6 @@ import {
   UserCheck
 } from "lucide-react";
 
-const getSessionsBasePrice = (
-  sessions: number,
-  basePricePerSession: number,
-  discountThreshold: number,
-  discountThresholdPrice: number,
-  pricePerSessionAfterThreshold: number
-) => {
-  if (sessions < discountThreshold) {
-    return sessions * basePricePerSession;
-  }
-  return discountThresholdPrice + (sessions - discountThreshold) * pricePerSessionAfterThreshold;
-};
 
 export async function loader({ params, request }: Route.LoaderArgs) {
   const userId = await requireUserId(request, `/login?redirectTo=/order/${params.id}`);
@@ -58,6 +50,9 @@ export async function loader({ params, request }: Route.LoaderArgs) {
             },
             pilotUser: {
               select: { id: true, name: true, email: true }
+            },
+            championshipGroup: {
+              select: { name: true, timeSlot: true }
             }
           }
         }
@@ -66,7 +61,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     prisma.companyConfig.findUnique({
       where: { id: "single-config" }
     }).then(conf => conf || {
-      companyName: "Leasio Paddock Rentals",
+      companyName: "MCM Racing School",
       logoUrl: "/images/ohvale_gp_one_1780331510373.png",
       circuitName: "Autodromo di Franciacorta",
       googleMapsUrl: ""
@@ -128,6 +123,9 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     basePricePerPerson = booking.totalPrice / booking.peopleCount;
   }
 
+  const orderUrl = new URL(`/order/${booking.id}`, request.url).toString();
+  const qrCodeSrc = await buildQrDataUri(orderUrl);
+
   return { 
     user, 
     booking, 
@@ -137,7 +135,9 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     isAdmin, 
     basePricePerPerson, 
     baseSessionsPrice,
-    customModifier 
+    customModifier,
+    orderUrl,
+    qrCodeSrc
   };
 }
 
@@ -164,7 +164,7 @@ export async function action({ params, request }: Route.ActionArgs) {
 
   if (intent === "cancel") {
     // Only creator (for future dates) or Admin can cancel
-    const isFutureDate = new Date(booking.date) >= new Date();
+    const isFutureDate = isTodayOrFuture(booking.date);
     if (!isAdmin && (!isCreator || !isFutureDate)) {
       return { error: "Not authorized to cancel this booking." };
     }
@@ -206,7 +206,9 @@ export default function OrderDetails() {
     isCreator, 
     isAdmin, 
     basePricePerPerson, 
-    baseSessionsPrice 
+    baseSessionsPrice,
+    orderUrl,
+    qrCodeSrc
   } = useLoaderData<typeof loader>();
   const actionData = useActionData() as { error?: string; success?: string } | undefined;
   const t = translations[locale as Locale];
@@ -214,20 +216,9 @@ export default function OrderDetails() {
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
 
-  const [orderUrl, setOrderUrl] = useState("");
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      setOrderUrl(`${window.location.origin}/order/${booking.id}`);
-    }
-  }, [booking.id]);
-
-  const qrCodeSrc = orderUrl 
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(orderUrl)}` 
-    : "";
-
   const isCancelled = booking.status === "CANCELLED";
   const isConfirmed = booking.status === "CONFIRMED";
-  const isFutureDate = new Date(booking.date) >= new Date();
+  const isFutureDate = isTodayOrFuture(booking.date);
 
   const handlePrint = () => {
     if (typeof window !== "undefined") {
@@ -354,7 +345,7 @@ export default function OrderDetails() {
         </div>
 
         <div className="border-t border-slate-300 pt-4 flex justify-between items-start">
-          <p className="text-[10px] text-slate-500 max-w-sm">System generated via Leasio GP Paddock Hub. Thank you for your business.</p>
+          <p className="text-[10px] text-slate-500 max-w-sm">System generated via {companyConfig.companyName}. Thank you for your business.</p>
           <div className="text-right space-y-1">
             <div className="text-xs text-slate-650 font-bold">
               <span>Avg. Price Per Person:</span>
@@ -542,8 +533,16 @@ export default function OrderDetails() {
                       {/* Bike specific info */}
                       <div className="bg-slate-950 p-4 rounded-2xl border border-slate-900 flex justify-between items-center text-xs">
                         <div className="space-y-1">
-                          <span className="block text-slate-500 uppercase tracking-widest text-[8px] font-bold">{locale === "en" ? "Ohvale Bike Model" : "Modello Moto Ohvale"}</span>
-                          <span className="font-extrabold text-white uppercase text-xs">{bb.bike.model.name}</span>
+                          <span className="block text-slate-500 uppercase tracking-widest text-[8px] font-bold">{locale === "en" ? "Assigned Bike" : "Moto Assegnata"}</span>
+                          <span className="font-extrabold text-white uppercase text-xs">{bikeDisplayName(bb.bike)}</span>
+                          <span className="block text-[10px] text-slate-400 uppercase">{bb.bike.model.name}</span>
+                          {bb.championshipGroup && (
+                            <span className="inline-flex items-center gap-1 mt-1 bg-lime-400/10 border border-lime-400/30 text-lime-400 text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded">
+                              <span>{bb.championshipGroup.name}</span>
+                              {bb.gridPosition ? <span>{"\u00b7 #" + bb.gridPosition}</span> : null}
+                              {bb.championshipGroup.timeSlot ? <span>{"\u00b7 " + bb.championshipGroup.timeSlot}</span> : null}
+                            </span>
+                          )}
                           <div className="flex items-center space-x-2 text-[10px] text-slate-400">
                             <span>Displacement: {bb.bike.model.displacement}cc</span>
                             {bb.bike.raceNumber && (

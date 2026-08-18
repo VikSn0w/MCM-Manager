@@ -4,7 +4,8 @@ import { requireAdmin } from "../../utils/auth.server";
 import { prisma } from "../../utils/db.server";
 import { getLocale } from "../../utils/locale.server";
 import { translations, type Locale } from "../../utils/translations";
-import { Settings, Save, CheckCircle, AlertTriangle, Building2, MapPin, Image } from "lucide-react";
+import { Settings, Save, CheckCircle, AlertTriangle, Building2, MapPin, Image, Bike as BikeIcon } from "lucide-react";
+import { useState } from "react";
 
 export async function loader({ request }: Route.LoaderArgs) {
   await requireAdmin(request);
@@ -13,10 +14,11 @@ export async function loader({ request }: Route.LoaderArgs) {
   const config = await prisma.companyConfig.findUnique({
     where: { id: "single-config" },
   }) || {
-    companyName: "Leasio Paddock Rentals",
+    companyName: "MCM Racing School",
     logoUrl: "/images/ohvale_gp_one_1780331510373.png",
     circuitName: "Autodromo di Franciacorta",
     googleMapsUrl: "",
+    bikeAssignmentMode: "AUTO",
   };
 
   return { config, locale };
@@ -30,6 +32,8 @@ export async function action({ request }: Route.ActionArgs) {
   const logoUrl = formData.get("logoUrl")?.toString().trim();
   const circuitName = formData.get("circuitName")?.toString().trim();
   const googleMapsUrl = formData.get("googleMapsUrl")?.toString().trim() || null;
+  const bikeAssignmentModeRaw = formData.get("bikeAssignmentMode")?.toString();
+  const bikeAssignmentMode = bikeAssignmentModeRaw === "MANUAL" ? "MANUAL" : "AUTO";
 
   if (!companyName || !logoUrl || !circuitName) {
     return { error: "All profile settings fields are mandatory." };
@@ -44,12 +48,14 @@ export async function action({ request }: Route.ActionArgs) {
         logoUrl,
         circuitName,
         googleMapsUrl,
+        bikeAssignmentMode,
       },
       update: {
         companyName,
         logoUrl,
         circuitName,
         googleMapsUrl,
+        bikeAssignmentMode,
       },
     });
 
@@ -64,6 +70,9 @@ export default function AdminSettings() {
   const actionData = useActionData() as { error?: string; success?: string } | undefined;
   const navigation = useNavigation();
   const isSaving = navigation.state === "submitting";
+  const [bikeAssignmentMode, setBikeAssignmentMode] = useState<"AUTO" | "MANUAL">(
+    config.bikeAssignmentMode === "MANUAL" ? "MANUAL" : "AUTO"
+  );
 
   const t = translations[locale as Locale];
 
@@ -188,6 +197,61 @@ export default function AdminSettings() {
                 ? "Provide a Google Maps iframe share embed URL (from Google Maps > Share > Embed map > src URL) to show an interactive map on the landing page, or standard link for button redirection."
                 : "Inserisci l'URL iframe di condivisione di Google Maps (da Google Maps > Condividi > Incorpora mappa > URL src) per mostrare la mappa interattiva sulla landing page, oppure un link standard per reindirizzare tramite pulsante."}
             </p>
+          </div>
+
+          {/* Bike assignment policy */}
+          <div className="space-y-2 pt-6 border-t border-slate-850">
+            <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider flex items-center space-x-1.5">
+              <BikeIcon className="h-4 w-4 text-orange-500" />
+              <span>{locale === "en" ? "Bike Assignment Policy" : "Politica di Assegnazione Moto"}</span>
+            </label>
+            <p className="text-[10px] text-slate-500 leading-normal">
+              {locale === "en"
+                ? "Customers always choose a model, never an individual bike. This setting decides who picks the actual unit (e.g. “Stoner 27”)."
+                : "I clienti scelgono sempre il modello, mai la singola moto. Questa impostazione decide chi sceglie l’esemplare (es. “Stoner 27”)."}
+            </p>
+
+            <input type="hidden" name="bikeAssignmentMode" value={bikeAssignmentMode} />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+              <button
+                type="button"
+                onClick={() => setBikeAssignmentMode("AUTO")}
+                className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
+                  bikeAssignmentMode === "AUTO"
+                    ? "bg-slate-950 border-orange-500/60 text-white"
+                    : "bg-slate-950/40 hover:bg-slate-950/80 border-slate-900 text-slate-500"
+                }`}
+              >
+                <span className="block font-bold text-xs uppercase">
+                  {locale === "en" ? "Automatic" : "Automatica"}
+                </span>
+                <span className="block text-[10px] text-slate-500 mt-1 leading-normal">
+                  {locale === "en"
+                    ? "The system allocates any free bike of the booked model. Nothing to review."
+                    : "Il sistema assegna una moto libera del modello prenotato. Nessuna revisione necessaria."}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setBikeAssignmentMode("MANUAL")}
+                className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
+                  bikeAssignmentMode === "MANUAL"
+                    ? "bg-slate-950 border-orange-500/60 text-white"
+                    : "bg-slate-950/40 hover:bg-slate-950/80 border-slate-900 text-slate-500"
+                }`}
+              >
+                <span className="block font-bold text-xs uppercase">
+                  {locale === "en" ? "Manual (MCM decides)" : "Manuale (decide MCM)"}
+                </span>
+                <span className="block text-[10px] text-slate-500 mt-1 leading-normal">
+                  {locale === "en"
+                    ? "Bikes are still reserved on booking so availability stays exact, but each booking waits in a review queue for staff to confirm or swap the units."
+                    : "Le moto restano riservate alla prenotazione per mantenere esatta la disponibilità, ma ogni prenotazione attende in coda che lo staff confermi o cambi gli esemplari."}
+                </span>
+              </button>
+            </div>
           </div>
 
           {/* Submit Button */}

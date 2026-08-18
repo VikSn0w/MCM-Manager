@@ -3,7 +3,59 @@ import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
+/**
+ * This script DELETES every row in every table before reseeding. That is fine
+ * for a scratch database and catastrophic anywhere else, and `npm run seed` is
+ * one keystroke away from the command you actually meant to type.
+ *
+ * So it refuses to run unless you say so explicitly:
+ *
+ *   SEED_CONFIRM=wipe npm run seed
+ *
+ * and it refuses outright when NODE_ENV is production, regardless of the flag.
+ */
+function assertSafeToWipe() {
+  const url = process.env.DATABASE_URL || "";
+  const host = (() => {
+    try {
+      return new URL(url).host;
+    } catch {
+      return "(unparseable DATABASE_URL)";
+    }
+  })();
+
+  const isLocal = /^(localhost|127\.0\.0\.1|\[::1\])(:|$)/.test(host);
+
+  console.log("");
+  console.log("  This will DELETE ALL DATA in:");
+  console.log("    host:", host);
+  console.log("    users, bookings, bikes, tariffs, championships, lessons, config");
+  console.log("");
+
+  if (process.env.NODE_ENV === "production") {
+    console.error("  Refusing: NODE_ENV is production.");
+    process.exit(1);
+  }
+
+  if (process.env.SEED_CONFIRM !== "wipe") {
+    console.error("  Refusing: set SEED_CONFIRM=wipe to confirm you want this.");
+    if (!isLocal) {
+      console.error("  Note: this DATABASE_URL is not localhost — check it is really a scratch database.");
+    }
+    console.error("");
+    console.error("    SEED_CONFIRM=wipe npm run seed");
+    console.error("");
+    process.exit(1);
+  }
+
+  if (!isLocal) {
+    console.warn("  WARNING: wiping a remote database (" + host + ").");
+  }
+}
+
 async function main() {
+  assertSafeToWipe();
+
   console.log("Seeding database...");
 
   // 1. Clear database
