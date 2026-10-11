@@ -17,6 +17,7 @@
     "@react-router/node": "7.18.2",
     "@react-router/serve": "7.18.2",
     "bcryptjs": "^3.0.3",
+    "impeccable": "^4.1.0",
     "isbot": "^5",
     "lucide-react": "^1.17.0",
     "qrcode": "^1.5.4",
