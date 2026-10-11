@@ -387,7 +387,7 @@ export default function AdminDashboard() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-400">
+            <table className="stack-table w-full text-left text-xs text-slate-400">
               <thead className="bg-slate-950 text-slate-400 uppercase font-bold tracking-wider border-b border-slate-900">
                 <tr>
                   <th className="px-6 py-4">{locale === "en" ? "Racer / Customer" : "Pilota / Cliente"}</th>
@@ -401,13 +401,13 @@ export default function AdminDashboard() {
               <tbody className="divide-y divide-slate-850/60">
                 {latestBookings.map((b) => (
                   <tr key={b.id} className="hover:bg-slate-850/20 transition-colors">
-                    <td className="px-6 py-4">
+                    <td data-label={locale === "en" ? "Racer / Customer" : "Pilota / Cliente"} className="px-6 py-4">
                       <span className="block font-bold text-white uppercase">{b.user.name}</span>
                       <span className="block text-xs text-slate-400 font-mono mt-0.5">{b.user.email}</span>
                     </td>
-                    <td className="px-6 py-4 font-mono font-extrabold text-white">{b.date}</td>
-                    <td className="px-6 py-4 font-mono text-orange-400">{b.hours}</td>
-                    <td className="px-6 py-4">
+                    <td data-label={locale === "en" ? "Date" : "Data"} className="px-6 py-4 font-mono font-extrabold text-white">{b.date}</td>
+                    <td data-label={locale === "en" ? "Hours" : "Orari"} className="px-6 py-4 font-mono text-orange-400">{b.hours}</td>
+                    <td data-label={locale === "en" ? "Allocated Fleet" : "Ohvale GP Assegnate"} className="px-6 py-4">
                       <div className="flex flex-wrap gap-1.5 max-w-xs">
                         {b.bikes.map((bb, index) => (
                           <span 
@@ -422,8 +422,8 @@ export default function AdminDashboard() {
                         ))}
                       </div>
                     </td>
-                    <td className="px-6 py-4 font-extrabold text-white">€{b.totalPrice.toFixed(2)}</td>
-                    <td className="px-6 py-4">
+                    <td data-label={locale === "en" ? "Grand Total" : "Totale Corrisposto"} className="px-6 py-4 font-extrabold text-white">€{b.totalPrice.toFixed(2)}</td>
+                    <td data-label={locale === "en" ? "Status" : "Stato"} className="px-6 py-4">
                       <span className={`text-xs font-extrabold px-2 py-0.5 rounded border uppercase tracking-wider ${
                         b.status === "PENDING"
                           ? "bg-amber-950/60 text-amber-400 border-amber-500/10"

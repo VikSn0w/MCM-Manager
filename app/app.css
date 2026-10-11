@@ -86,6 +86,58 @@ a, button, select, input, textarea, .interactive-card, [role="button"] {
   transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* Collapsible mobile menus: animate height and opacity without unmounting */
+.menu-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    grid-template-rows 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    visibility 0s linear 0.35s;
+}
+.menu-collapse[data-open="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0s;
+}
+.menu-collapse > * { min-height: 0; overflow: hidden; }
+@media (min-width: 768px) {
+  .menu-collapse-md { grid-template-rows: 1fr; opacity: 1; visibility: visible; }
+  .menu-collapse-md > * { overflow: visible; }
+}
+@media (min-width: 1024px) {
+  .menu-collapse-lg { grid-template-rows: 1fr; opacity: 1; visibility: visible; }
+}
+
+/* Tables become stacked cards on phones, so nothing scrolls sideways */
+@media (max-width: 767px) {
+  .stack-table thead { display: none; }
+  .stack-table,
+  .stack-table tbody,
+  .stack-table tr { display: block; width: 100%; }
+  .stack-table tr { padding: 0.75rem 1rem; border-bottom: 1px solid #1e293b; }
+  .stack-table td {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.4rem 0;
+    text-align: right;
+  }
+  .stack-table td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    text-align: left;
+    color: #94a3b8;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *,

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link, Outlet, useLoaderData, useLocation, Form } from "react-router";
 import type { Route } from "./+types/layout";
 import { requireAdmin } from "../../utils/auth.server";
@@ -17,7 +18,9 @@ import {
   Bell,
   Activity,
   LogOut,
-  BookOpen
+  BookOpen,
+  Menu,
+  X
 } from "lucide-react";
 
 export async function loader({ request }: Route.LoaderArgs) {
@@ -53,6 +56,8 @@ export default function AdminLayout() {
   const t = translations[locale as Locale];
 
   const location = useLocation();
+  const [menuOpen, setMenuOpen] = useState(false);
+  useEffect(() => { setMenuOpen(false); }, [location.pathname]);
   const currentPath = location.pathname;
   const currentPathWithSearch = location.pathname + location.search;
 
@@ -74,7 +79,7 @@ export default function AdminLayout() {
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] opacity-10 pointer-events-none" />
 
       {/* Sidebar Navigation */}
-      <aside className="w-full md:w-72 bg-slate-900/60 backdrop-blur-xl border-b md:border-b-0 md:border-r border-slate-850 flex flex-col justify-between shrink-0 sticky top-0 md:relative z-30">
+      <aside className="w-full md:w-72 bg-slate-900/60 backdrop-blur-xl border-b md:border-b-0 md:border-r border-slate-850 flex flex-col justify-between shrink-0 sticky top-0 md:relative z-30 max-h-screen overflow-y-auto md:max-h-none md:overflow-visible">
         <div>
           {/* Sidebar Logo */}
           <div className="p-3 md:p-6 md:border-b border-slate-850 flex flex-row md:flex-col items-center md:items-start justify-between md:justify-start gap-3">
@@ -90,16 +95,19 @@ export default function AdminLayout() {
                 {companyConfig.companyName}
               </span>
             </Link>
-            <div className="flex md:hidden items-center gap-1">
-              <Link to="/" className="p-2.5 text-slate-300 hover:text-white rounded-lg" title={t.exitBackoffice} aria-label={t.exitBackoffice}>
-                <ArrowLeft className="h-4 w-4" />
-              </Link>
-              <Form method="post" action="/logout">
-                <button type="submit" className="p-2.5 text-slate-300 hover:text-red-400 rounded-lg cursor-pointer" title={t.logout} aria-label={t.logout}>
-                  <LogOut className="h-4 w-4" />
-                </button>
-              </Form>
-            </div>
+            <button
+              type="button"
+              onClick={() => setMenuOpen((o) => !o)}
+              aria-expanded={menuOpen}
+              aria-controls="admin-menu"
+              aria-label={menuOpen ? (locale === "en" ? "Close menu" : "Chiudi menu") : (locale === "en" ? "Open menu" : "Apri menu")}
+              className="md:hidden p-2.5 text-slate-200 hover:text-white rounded-lg cursor-pointer"
+            >
+              <span className="relative block h-6 w-6">
+                <Menu className={`absolute inset-0 h-6 w-6 transition-all duration-300 ease-out ${menuOpen ? "rotate-90 scale-50 opacity-0" : "rotate-0 scale-100 opacity-100"}`} />
+                <X className={`absolute inset-0 h-6 w-6 transition-all duration-300 ease-out ${menuOpen ? "rotate-0 scale-100 opacity-100" : "-rotate-90 scale-50 opacity-0"}`} />
+              </span>
+            </button>
             <div className="hidden md:flex w-full justify-between items-center text-xs">
               <span className="text-slate-400 font-mono font-bold truncate max-w-[130px]" title={companyConfig.circuitName}>
                 📍 {companyConfig.circuitName}
@@ -111,7 +119,9 @@ export default function AdminLayout() {
           </div>
 
           {/* Links list */}
-          <nav className="flex md:block gap-2 overflow-x-auto md:overflow-visible px-3 pb-3 pt-1 md:p-4 md:space-y-1.5 md:mt-4">
+          <div id="admin-menu" data-open={menuOpen} className="menu-collapse menu-collapse-md">
+          <div>
+          <nav className="p-4 space-y-1.5 md:mt-4">
             {menuItems.map((item) => {
               const Icon = item.icon;
               const isActive = currentPath === item.path;
@@ -119,7 +129,7 @@ export default function AdminLayout() {
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`shrink-0 md:w-full whitespace-nowrap flex items-center justify-between px-3 md:px-4 py-2.5 md:py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
                     isActive
                       ? "bg-orange-600 text-white shadow-lg shadow-orange-600/15"
                       : "text-slate-400 hover:text-white hover:bg-slate-850"
@@ -129,15 +139,19 @@ export default function AdminLayout() {
                     <Icon className="h-4.5 w-4.5" />
                     <span>{item.name}</span>
                   </div>
-                  <ChevronRight className={`hidden md:block h-4 w-4 transition-transform ${isActive ? "opacity-100" : "opacity-0"}`} />
+                  <ChevronRight className={`h-4 w-4 transition-transform ${isActive ? "opacity-100" : "opacity-0"}`} />
                 </Link>
               );
             })}
           </nav>
+          </div>
+          </div>
         </div>
 
         {/* Sidebar Footer */}
-        <div className="hidden md:block p-4 border-t border-slate-850 space-y-4">
+        <div data-open={menuOpen} className="menu-collapse menu-collapse-md">
+        <div>
+        <div className="p-4 border-t border-slate-850 space-y-4">
           
           {/* Quick exit link */}
           <Link
@@ -177,6 +191,8 @@ export default function AdminLayout() {
             </a>
           </div>
 
+        </div>
+        </div>
         </div>
       </aside>
 

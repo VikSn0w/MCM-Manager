@@ -311,7 +311,7 @@ export default function AdminBookings() {
         </div>
 
         {/* Status Filters */}
-        <div className="flex items-center space-x-2 w-full md:w-auto overflow-x-auto">
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
           {["ALL", "PENDING", "CONFIRMED", "CANCELLED"].map((status) => {
             const statusLabel = 
               status === "ALL" && locale === "it" ? "TUTTE" 
@@ -351,7 +351,7 @@ export default function AdminBookings() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-400">
+            <table className="stack-table w-full text-left text-xs text-slate-400">
               <thead className="bg-slate-950 text-slate-400 uppercase font-bold tracking-wider border-b border-slate-900">
                 <tr>
                   <th className="px-6 py-4">{locale === "en" ? "Racer" : "Pilota"}</th>
@@ -378,7 +378,7 @@ export default function AdminBookings() {
                       }`}
                     >
                       {/* Customer details */}
-                      <td className="px-6 py-4">
+                      <td data-label={locale === "en" ? "Racer" : "Pilota"} className="px-6 py-4">
                         <div className="space-y-0.5">
                           <span className="block font-black text-white uppercase">{booking.user.name}</span>
                           <span className="block text-xs text-slate-400 font-mono">{booking.user.email}</span>
@@ -403,10 +403,10 @@ export default function AdminBookings() {
                       </td>
 
                       {/* Date */}
-                      <td className="px-6 py-4 font-mono font-extrabold text-white">{booking.date}</td>
+                      <td data-label="Data" className="px-6 py-4 font-mono font-extrabold text-white">{booking.date}</td>
 
                       {/* Sessions count / riders */}
-                      <td className="px-6 py-4">
+                      <td data-label={locale === "en" ? "Sessions" : "Turni"} className="px-6 py-4">
                         <div className="space-y-0.5">
                           <span className="block font-bold text-white">
                             {booking.bookingType === "CHAMPIONSHIP"
@@ -420,10 +420,10 @@ export default function AdminBookings() {
                       </td>
 
                       {/* Hours */}
-                      <td className="px-6 py-4 font-mono text-orange-400 font-bold">{booking.hours}</td>
+                      <td data-label={locale === "en" ? "Operating Hours" : "Orari Sessione"} className="px-6 py-4 font-mono text-orange-400 font-bold">{booking.hours}</td>
 
                       {/* Assigned bikes with insurance indicator */}
-                      <td className="px-6 py-4">
+                      <td data-label={locale === "en" ? "Allocated Ohvale GPs" : "Ohvale GP Assegnate"} className="px-6 py-4">
                         <div className="flex flex-col gap-1.5 max-w-xs">
                           {booking.bikes.map((bb, idx) => (
                             <div key={bb.id} className="bg-slate-950 text-slate-300 border border-slate-900 text-xs px-2 py-1.5 rounded font-medium space-y-1.5">
@@ -503,10 +503,10 @@ export default function AdminBookings() {
                       </td>
 
                       {/* Price */}
-                      <td className="px-6 py-4 font-extrabold text-white">€{booking.totalPrice.toFixed(2)}</td>
+                      <td data-label={locale === "en" ? "Grand Total" : "Prezzo Totale"} className="px-6 py-4 font-extrabold text-white">€{booking.totalPrice.toFixed(2)}</td>
 
                       {/* Status */}
-                      <td className="px-6 py-4">
+                      <td data-label="Stato" className="px-6 py-4">
                         <span className={`text-xs font-extrabold uppercase px-2 py-0.5 rounded border tracking-wider ${
                           isCancelled
                             ? "bg-red-950/60 text-red-400 border-red-500/10"
@@ -525,7 +525,7 @@ export default function AdminBookings() {
                       </td>
 
                       {/* Actions */}
-                      <td className="px-6 py-4 text-right flex items-center justify-end space-x-2">
+                      <td data-label="Azioni" className="px-6 py-4 text-right flex items-center justify-end space-x-2">
                         <Link
                           to={`/order/${booking.id}`}
                           className="text-xs font-extrabold uppercase px-3 py-1.5 bg-slate-950 hover:bg-slate-900 border border-slate-800 text-slate-300 hover:text-white rounded-lg transition-all text-center"

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useLoaderData, Form, useLocation } from "react-router";
 import type { Route } from "./+types/home";
 import { getUser } from "../utils/auth.server";
@@ -17,7 +18,9 @@ import {
   ArrowRight,
   TrendingUp,
   Cpu,
-  MapPin
+  MapPin,
+  Menu,
+  X,
 } from "lucide-react";
 
 export async function loader({ request }: Route.LoaderArgs) {
@@ -85,6 +88,7 @@ const formatDate = (dateStr: string, locale: string) => {
 
 export default function Home() {
   const { user, bikes, companyConfig, upcomingChampionships, locale } = useLoaderData<typeof loader>();
+  const [menuOpen, setMenuOpen] = useState(false);
   
   // Show distinct models to prevent cluttering the homepage (max 4 models)
   const displayedBikes = bikes.slice(0, 4);
@@ -105,10 +109,10 @@ export default function Home() {
             <Link to="/" className="flex items-center space-x-3 hover:opacity-90 transition-opacity">
               <img
                 src={companyConfig.logoUrl || "/logosmall.png"}
-                alt=""
+                alt={companyConfig.companyName}
                 className="h-10 w-auto object-contain rounded"
               />
-              <span className="text-xl font-black tracking-tighter uppercase text-white">
+              <span className="hidden sm:inline text-xl font-black tracking-tighter uppercase text-white">
                 {companyConfig.companyName}
               </span>
             </Link>
@@ -171,13 +175,30 @@ export default function Home() {
                   </Link>
                 </div>
               )}
+              <button
+                type="button"
+                onClick={() => setMenuOpen((o) => !o)}
+                aria-expanded={menuOpen}
+                aria-controls="mobile-menu"
+                aria-label={menuOpen ? (locale === "en" ? "Close menu" : "Chiudi menu") : (locale === "en" ? "Open menu" : "Apri menu")}
+                className="lg:hidden p-2 text-slate-200 hover:text-white cursor-pointer"
+              >
+                <span className="relative block h-6 w-6">
+                <Menu className={`absolute inset-0 h-6 w-6 transition-all duration-300 ease-out ${menuOpen ? "rotate-90 scale-50 opacity-0" : "rotate-0 scale-100 opacity-100"}`} />
+                <X className={`absolute inset-0 h-6 w-6 transition-all duration-300 ease-out ${menuOpen ? "rotate-0 scale-100 opacity-100" : "-rotate-90 scale-50 opacity-0"}`} />
+              </span>
+              </button>
             </div>
           </div>
-          <nav aria-label="Menu" className="lg:hidden flex gap-6 pb-3 text-sm font-semibold text-slate-300 overflow-x-auto">
-            <Link to="/#fleet" className="py-2 hover:text-orange-500">{t.fleet}</Link>
-            <Link to="/academy" className="py-2 hover:text-orange-500">Academy</Link>
-            <Link to="/#calendar" className="py-2 hover:text-orange-500">{locale === "en" ? "Calendar" : "Calendario"}</Link>
-          </nav>
+          <div id="mobile-menu" data-open={menuOpen} className="menu-collapse lg:hidden">
+            <div>
+            <nav aria-label="Menu" className="flex flex-col pb-3 text-base font-semibold text-slate-200 border-t border-slate-900">
+              <Link to="/#fleet" className="py-3 hover:text-orange-500">{t.fleet}</Link>
+              <Link to="/academy" className="py-3 hover:text-orange-500">Academy</Link>
+              <Link to="/#calendar" className="py-3 hover:text-orange-500">{locale === "en" ? "Calendar" : "Calendario"}</Link>
+            </nav>
+            </div>
+          </div>
         </div>
       </header>
 
