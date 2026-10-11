@@ -97,7 +97,7 @@ export default function Academy() {
             </Link>
 
             {/* Navigation links */}
-            <nav className="hidden md:flex space-x-8 text-sm font-bold uppercase tracking-wider text-slate-300">
+            <nav className="hidden lg:flex space-x-8 text-sm font-bold uppercase tracking-wider text-slate-300">
               <Link to="/#fleet" className="hover:text-orange-500 transition-colors">{t.fleet}</Link>
               <Link to="/academy" className="text-orange-500 hover:text-orange-600 transition-colors">
                 {locale === "en" ? "Academy" : "Academy"}
@@ -156,6 +156,11 @@ export default function Academy() {
               )}
             </div>
           </div>
+          <nav aria-label="Menu" className="lg:hidden flex gap-6 pb-3 text-sm font-semibold text-slate-300 overflow-x-auto">
+            <Link to="/#fleet" className="py-2 hover:text-orange-500">{t.fleet}</Link>
+            <Link to="/academy" className="py-2 text-orange-500">Academy</Link>
+            <Link to="/#calendar" className="py-2 hover:text-orange-500">{locale === "en" ? "Calendar" : "Calendario"}</Link>
+          </nav>
         </div>
       </header>
 

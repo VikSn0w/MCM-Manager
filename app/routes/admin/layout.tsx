@@ -74,10 +74,10 @@ export default function AdminLayout() {
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] opacity-10 pointer-events-none" />
 
       {/* Sidebar Navigation */}
-      <aside className="w-full md:w-72 bg-slate-900/60 backdrop-blur-xl border-b md:border-b-0 md:border-r border-slate-850 flex flex-col justify-between shrink-0 relative z-30">
+      <aside className="w-full md:w-72 bg-slate-900/60 backdrop-blur-xl border-b md:border-b-0 md:border-r border-slate-850 flex flex-col justify-between shrink-0 sticky top-0 md:relative z-30">
         <div>
           {/* Sidebar Logo */}
-          <div className="p-6 border-b border-slate-850 flex flex-col items-start gap-3">
+          <div className="p-3 md:p-6 md:border-b border-slate-850 flex flex-row md:flex-col items-center md:items-start justify-between md:justify-start gap-3">
             <Link to="/" className="flex items-center space-x-2.5 max-w-full">
               {companyConfig.logoUrl ? (
                 <div className="h-8 bg-slate-950 border border-slate-850 rounded-lg p-1.5 flex items-center justify-center shrink-0">
@@ -90,7 +90,17 @@ export default function AdminLayout() {
                 {companyConfig.companyName}
               </span>
             </Link>
-            <div className="w-full flex justify-between items-center text-xs">
+            <div className="flex md:hidden items-center gap-1">
+              <Link to="/" className="p-2.5 text-slate-300 hover:text-white rounded-lg" title={t.exitBackoffice} aria-label={t.exitBackoffice}>
+                <ArrowLeft className="h-4 w-4" />
+              </Link>
+              <Form method="post" action="/logout">
+                <button type="submit" className="p-2.5 text-slate-300 hover:text-red-400 rounded-lg cursor-pointer" title={t.logout} aria-label={t.logout}>
+                  <LogOut className="h-4 w-4" />
+                </button>
+              </Form>
+            </div>
+            <div className="hidden md:flex w-full justify-between items-center text-xs">
               <span className="text-slate-400 font-mono font-bold truncate max-w-[130px]" title={companyConfig.circuitName}>
                 📍 {companyConfig.circuitName}
               </span>
@@ -101,7 +111,7 @@ export default function AdminLayout() {
           </div>
 
           {/* Links list */}
-          <nav className="p-4 space-y-1.5 mt-4">
+          <nav className="flex md:block gap-2 overflow-x-auto md:overflow-visible px-3 pb-3 pt-1 md:p-4 md:space-y-1.5 md:mt-4">
             {menuItems.map((item) => {
               const Icon = item.icon;
               const isActive = currentPath === item.path;
@@ -109,7 +119,7 @@ export default function AdminLayout() {
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
+                  className={`shrink-0 md:w-full whitespace-nowrap flex items-center justify-between px-3 md:px-4 py-2.5 md:py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
                     isActive
                       ? "bg-orange-600 text-white shadow-lg shadow-orange-600/15"
                       : "text-slate-400 hover:text-white hover:bg-slate-850"
@@ -119,7 +129,7 @@ export default function AdminLayout() {
                     <Icon className="h-4.5 w-4.5" />
                     <span>{item.name}</span>
                   </div>
-                  <ChevronRight className={`h-4 w-4 transition-transform ${isActive ? "opacity-100" : "opacity-0"}`} />
+                  <ChevronRight className={`hidden md:block h-4 w-4 transition-transform ${isActive ? "opacity-100" : "opacity-0"}`} />
                 </Link>
               );
             })}
@@ -127,7 +137,7 @@ export default function AdminLayout() {
         </div>
 
         {/* Sidebar Footer */}
-        <div className="p-4 border-t border-slate-850 space-y-4">
+        <div className="hidden md:block p-4 border-t border-slate-850 space-y-4">
           
           {/* Quick exit link */}
           <Link
@@ -174,7 +184,7 @@ export default function AdminLayout() {
       <div className="flex-1 flex flex-col min-w-0 relative z-10">
         
         {/* Top bar header */}
-        <header className="bg-slate-900/40 backdrop-blur-xl border-b border-slate-850 px-8 py-5 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 shrink-0">
+        <header className="bg-slate-900/40 backdrop-blur-xl border-b border-slate-850 px-4 md:px-8 py-4 md:py-5 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 shrink-0">
           <div>
             <span className="text-xs font-extrabold uppercase tracking-wider text-slate-400">
               {locale === "en" ? "Paddock Management System" : "Sistema Gestione Paddock"}
@@ -183,9 +193,9 @@ export default function AdminLayout() {
           </div>
 
           {/* Quick Metrics Header Row */}
-          <div className="flex flex-wrap items-center gap-6 text-xs text-slate-400 font-bold uppercase tracking-wider font-mono">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:flex lg:flex-wrap items-center gap-4 lg:gap-6 w-full lg:w-auto text-xs text-slate-400 font-bold uppercase tracking-wider font-mono">
             
-            <div className="flex items-center space-x-2 border-r border-slate-800 pr-6">
+            <div className="flex items-center space-x-2 lg:border-r border-slate-800 lg:pr-6">
               <Activity className="h-4.5 w-4.5 text-orange-500 shrink-0" />
               <div>
                 <span className="block text-xs text-slate-400 uppercase">
@@ -195,7 +205,7 @@ export default function AdminLayout() {
               </div>
             </div>
             
-            <div className="flex items-center space-x-2 border-r border-slate-800 pr-6">
+            <div className="flex items-center space-x-2 lg:border-r border-slate-800 lg:pr-6">
               <Bell className="h-4.5 w-4.5 text-amber-500 shrink-0" />
               <div>
                 <span className="block text-xs text-slate-400 uppercase">
@@ -205,7 +215,7 @@ export default function AdminLayout() {
               </div>
             </div>
 
-            <div className="flex items-center space-x-2 border-r border-slate-800 pr-6">
+            <div className="flex items-center space-x-2 lg:border-r border-slate-800 lg:pr-6">
               <Receipt className="h-4.5 w-4.5 text-green-500 shrink-0" />
               <div>
                 <span className="block text-xs text-slate-400 uppercase">
@@ -229,7 +239,7 @@ export default function AdminLayout() {
         </header>
 
         {/* Content body container */}
-        <main key={location.pathname} className="flex-1 overflow-y-auto p-8 animate-fade-in">
+        <main key={location.pathname} className="flex-1 overflow-y-auto p-4 md:p-8 animate-fade-in">
           <Outlet context={{ locale }} />
         </main>
 
