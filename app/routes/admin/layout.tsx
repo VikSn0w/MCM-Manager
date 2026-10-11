@@ -90,11 +90,11 @@ export default function AdminLayout() {
                 {companyConfig.companyName}
               </span>
             </Link>
-            <div className="w-full flex justify-between items-center text-[10px]">
-              <span className="text-slate-500 font-mono font-bold truncate max-w-[130px]" title={companyConfig.circuitName}>
+            <div className="w-full flex justify-between items-center text-xs">
+              <span className="text-slate-400 font-mono font-bold truncate max-w-[130px]" title={companyConfig.circuitName}>
                 📍 {companyConfig.circuitName}
               </span>
-              <span className="bg-orange-500/20 text-orange-400 text-[8px] font-extrabold px-1.5 py-0.5 rounded border border-orange-500/20 uppercase tracking-widest shrink-0">
+              <span className="bg-orange-500/20 text-orange-400 text-xs font-extrabold px-1.5 py-0.5 rounded border border-orange-500/20 uppercase tracking-wider shrink-0">
                 {t.staff}
               </span>
             </div>
@@ -132,7 +132,7 @@ export default function AdminLayout() {
           {/* Quick exit link */}
           <Link
             to="/"
-            className="w-full flex items-center justify-center space-x-2 bg-slate-950 hover:bg-slate-850 border border-slate-850 text-slate-400 hover:text-white font-bold uppercase text-[10px] tracking-wider py-3 rounded-xl transition-all"
+            className="w-full flex items-center justify-center space-x-2 bg-slate-950 hover:bg-slate-850 border border-slate-850 text-slate-400 hover:text-white font-bold uppercase text-xs tracking-wider py-3 rounded-xl transition-all"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             <span>{t.exitBackoffice}</span>
@@ -145,14 +145,14 @@ export default function AdminLayout() {
                 {adminUser.name.charAt(0)}
               </div>
               <div className="truncate w-32">
-                <span className="block text-[11px] font-black text-white truncate uppercase tracking-wider">{adminUser.name}</span>
-                <span className="block text-[9px] text-slate-500 truncate font-mono">{adminUser.email}</span>
+                <span className="block text-xs font-black text-white truncate uppercase tracking-wider">{adminUser.name}</span>
+                <span className="block text-xs text-slate-400 truncate font-mono">{adminUser.email}</span>
               </div>
             </div>
             <Form method="post" action="/logout">
               <button
                 type="submit"
-                className="text-slate-500 hover:text-red-400 p-1.5 hover:bg-slate-900 rounded-lg transition-colors cursor-pointer"
+                className="text-slate-400 hover:text-red-400 p-1.5 hover:bg-slate-900 rounded-lg transition-colors cursor-pointer"
                 title={t.logout}
               >
                 <LogOut className="h-4 w-4" />
@@ -176,7 +176,7 @@ export default function AdminLayout() {
         {/* Top bar header */}
         <header className="bg-slate-900/40 backdrop-blur-xl border-b border-slate-850 px-8 py-5 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 shrink-0">
           <div>
-            <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">
+            <span className="text-xs font-extrabold uppercase tracking-wider text-slate-400">
               {locale === "en" ? "Paddock Management System" : "Sistema Gestione Paddock"}
             </span>
             <h2 className="text-lg font-black uppercase tracking-tight text-white mt-0.5">{t.controlCenter}</h2>
@@ -188,7 +188,7 @@ export default function AdminLayout() {
             <div className="flex items-center space-x-2 border-r border-slate-800 pr-6">
               <Activity className="h-4.5 w-4.5 text-orange-500 shrink-0" />
               <div>
-                <span className="block text-[9px] text-slate-500 uppercase">
+                <span className="block text-xs text-slate-400 uppercase">
                   {locale === "en" ? "Fleet Size" : "Dim. Flotta"}
                 </span>
                 <span className="text-sm font-black text-white mt-0.5">{bikesCount} {locale === "en" ? "Ohvales" : "Moto"}</span>
@@ -198,7 +198,7 @@ export default function AdminLayout() {
             <div className="flex items-center space-x-2 border-r border-slate-800 pr-6">
               <Bell className="h-4.5 w-4.5 text-amber-500 shrink-0" />
               <div>
-                <span className="block text-[9px] text-slate-500 uppercase">
+                <span className="block text-xs text-slate-400 uppercase">
                   {locale === "en" ? "Pending" : "In attesa"}
                 </span>
                 <span className="text-sm font-black text-white mt-0.5">{pendingBookingsCount} {locale === "en" ? "Bookings" : "Prenotazioni"}</span>
@@ -208,7 +208,7 @@ export default function AdminLayout() {
             <div className="flex items-center space-x-2 border-r border-slate-800 pr-6">
               <Receipt className="h-4.5 w-4.5 text-green-500 shrink-0" />
               <div>
-                <span className="block text-[9px] text-slate-500 uppercase">
+                <span className="block text-xs text-slate-400 uppercase">
                   {locale === "en" ? "Confirmed" : "Confermati"}
                 </span>
                 <span className="text-sm font-black text-white mt-0.5">{activeBookingsCount} {locale === "en" ? "Bookings" : "Prenotazioni"}</span>
@@ -218,7 +218,7 @@ export default function AdminLayout() {
             <div className="flex items-center space-x-2">
               <Calendar className="h-4.5 w-4.5 text-blue-400 shrink-0" />
               <div>
-                <span className="block text-[9px] text-slate-500 uppercase">
+                <span className="block text-xs text-slate-400 uppercase">
                   {locale === "en" ? "Overrides" : "Eccezioni"}
                 </span>
                 <span className="text-sm font-black text-white mt-0.5">{dayConfigsCount} {locale === "en" ? "Dates" : "Date"}</span>

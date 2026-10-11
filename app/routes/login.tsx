@@ -20,7 +20,7 @@ export async function action({ request }: Route.ActionArgs) {
   const redirectTo = formData.get("redirectTo")?.toString() || "/dashboard";
 
   if (typeof email !== "string" || typeof password !== "string") {
-    return { error: "Invalid form fields." };
+    return { error: "Campi del modulo non validi." };
   }
 
   const normalisedEmail = email.trim().toLowerCase();
@@ -30,7 +30,7 @@ export async function action({ request }: Route.ActionArgs) {
   const rate = checkRateLimit(rateKey, 10, 15 * 60 * 1000);
   if (!rate.allowed) {
     return {
-      error: `Too many failed sign-in attempts. Try again in ${Math.ceil(rate.retryAfterSeconds / 60)} minute(s).`,
+      error: `Troppi tentativi di accesso falliti. Riprova tra ${Math.ceil(rate.retryAfterSeconds / 60)} minuti.`,
     };
   }
 
@@ -40,13 +40,13 @@ export async function action({ request }: Route.ActionArgs) {
   });
 
   if (!user) {
-    return { error: "Invalid email or password." };
+    return { error: "Email o password non corrette." };
   }
 
   // Compare passwords
   const isCorrectPassword = await bcrypt.compare(password, user.password);
   if (!isCorrectPassword) {
-    return { error: "Invalid email or password." };
+    return { error: "Email o password non corrette." };
   }
 
   resetRateLimit(rateKey);
@@ -78,7 +78,6 @@ export default function Login() {
 
       {/* Background decoration */}
       <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-orange-950/20 via-slate-950 to-slate-950 pointer-events-none" />
-      <div className="absolute -top-40 -left-40 w-96 h-96 bg-orange-600/10 rounded-full blur-3xl pointer-events-none" />
       
       {/* Carbon grid lines overlay */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] opacity-30 pointer-events-none" />
@@ -99,7 +98,7 @@ export default function Login() {
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md relative z-10 px-4 sm:px-0">
-        <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-880/80 py-8 px-6 shadow-2xl rounded-2xl sm:px-10">
+        <div className="bg-slate-900/60 border border-slate-880/80 py-8 px-6 shadow-2xl rounded-2xl sm:px-10">
           
           {actionData?.error && (
             <div className="mb-6 bg-red-950/40 border border-red-500/30 rounded-xl p-4 flex items-start space-x-3 text-red-200">
@@ -122,7 +121,7 @@ export default function Login() {
                   type="email"
                   autoComplete="email"
                   required
-                  placeholder="racer@example.com"
+                  placeholder="nome@esempio.it"
                   className="w-full bg-slate-950/80 border border-slate-800 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 text-white rounded-xl py-3 px-4 shadow-inner placeholder-slate-600 transition-all text-sm outline-none"
                 />
               </div>
@@ -186,7 +185,7 @@ export default function Login() {
           </Form>
 
           {/* Footer badge */}
-          <div className="mt-8 pt-6 border-t border-slate-800/80 flex justify-center items-center space-x-2 text-xs text-slate-500 uppercase tracking-widest">
+          <div className="mt-8 pt-6 border-t border-slate-800/80 flex justify-center items-center space-x-2 text-xs text-slate-400 uppercase tracking-wider">
             <Flag className="h-4.5 w-4.5 text-slate-600" />
             <span>{t.fimBadge}</span>
           </div>

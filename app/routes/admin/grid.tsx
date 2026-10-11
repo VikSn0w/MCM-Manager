@@ -55,7 +55,7 @@ export async function action({ request }: Route.ActionArgs) {
   const targetGroupId = formData.get("targetGroupId")?.toString();
 
   if (!entryId || !targetGroupId) {
-    return { error: "Missing rider or target group." };
+    return { error: "Mancano il pilota o il gruppo di destinazione." };
   }
 
   try {
@@ -70,14 +70,14 @@ export async function action({ request }: Route.ActionArgs) {
           },
         });
 
-        if (!entry) throw new Error("That rider entry no longer exists.");
-        if (!entry.championshipGroup) throw new Error("That rider is not part of a championship group.");
+        if (!entry) throw new Error("Questa iscrizione non esiste più.");
+        if (!entry.championshipGroup) throw new Error("Questo pilota non fa parte di un gruppo di campionato.");
         if (entry.championshipGroupId === targetGroupId) return;
 
         const target = await tx.championshipGroup.findUnique({ where: { id: targetGroupId } });
-        if (!target) throw new Error("That group no longer exists.");
+        if (!target) throw new Error("Questo gruppo non esiste più.");
         if (target.championshipId !== entry.championshipGroup.championshipId) {
-          throw new Error("You can only move a rider between groups of the same championship.");
+          throw new Error("Puoi spostare un pilota solo tra gruppi dello stesso campionato.");
         }
 
         const taken = await tx.bookingBike.count({
@@ -87,7 +87,7 @@ export async function action({ request }: Route.ActionArgs) {
           },
         });
         if (taken >= target.capacity) {
-          throw new Error(`"${target.name}" is full (${target.capacity} riders).`);
+          throw new Error(`"${target.name}" è al completo (${target.capacity} piloti).`);
         }
 
         // Each heat reuses the whole fleet, so the rider's current bike may
@@ -121,7 +121,7 @@ export async function action({ request }: Route.ActionArgs) {
           });
           if (!replacement) {
             throw new Error(
-              `No free ${entry.bike.modelId ? "bike of that model" : "bike"} left in "${target.name}".`
+              `Nessuna moto ${entry.bike.modelId ? "di quel modello" : ""} libera in "${target.name}".`
             );
           }
           bikeId = replacement.id;
@@ -140,12 +140,12 @@ export async function action({ request }: Route.ActionArgs) {
     );
   } catch (err: any) {
     if (typeof err === "object" && err !== null && err.code === "P2034") {
-      return { error: "Another change landed at the same time. Reload and try again." };
+      return { error: "Un'altra modifica è arrivata nello stesso momento. Ricarica e riprova." };
     }
-    return { error: err?.message || "Could not move that rider." };
+    return { error: err?.message || "Impossibile spostare il pilota." };
   }
 
-  return { success: "Rider moved." };
+  return { success: "Pilota spostato." };
 }
 
 export default function AdminGrid() {
@@ -163,7 +163,7 @@ export default function AdminGrid() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <span className="text-xs font-bold uppercase tracking-widest text-orange-500 font-mono">
+          <span className="text-xs font-bold uppercase tracking-wider text-orange-500 font-mono">
             {locale === "en" ? "Race Day Grid" : "Griglia Gara"}
           </span>
           <h1 className="text-3xl font-black uppercase text-white tracking-tight mt-1 flex items-center space-x-2">
@@ -190,7 +190,7 @@ export default function AdminGrid() {
 
           <button
             onClick={() => window.print()}
-            className="py-2.5 px-4 bg-slate-950 hover:bg-slate-850 border border-slate-850 text-slate-300 hover:text-white rounded-xl text-[10px] font-extrabold uppercase tracking-wider flex items-center space-x-1.5 transition-colors cursor-pointer"
+            className="py-2.5 px-4 bg-slate-950 hover:bg-slate-850 border border-slate-850 text-slate-300 hover:text-white rounded-xl text-xs font-extrabold uppercase tracking-wider flex items-center space-x-1.5 transition-colors cursor-pointer"
           >
             <Printer className="h-3.5 w-3.5" />
             <span>{locale === "en" ? "Print" : "Stampa"}</span>
@@ -226,7 +226,7 @@ export default function AdminGrid() {
           </p>
           <Link
             to="/admin/championships"
-            className="inline-block py-2.5 px-5 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-colors"
+            className="inline-block py-2.5 px-5 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-extrabold uppercase tracking-wider transition-colors"
           >
             {locale === "en" ? "Manage groups" : "Gestisci gruppi"}
           </Link>
@@ -252,13 +252,13 @@ export default function AdminGrid() {
                     {group.name}
                   </h2>
                   {group.timeSlot && (
-                    <p className="text-slate-900/70 text-[10px] font-bold text-center font-mono">{group.timeSlot}</p>
+                    <p className="text-slate-900/70 text-xs font-bold text-center font-mono">{group.timeSlot}</p>
                   )}
                 </div>
 
                 <div className="p-3 space-y-1.5 flex-1">
                   {group.entries.length === 0 ? (
-                    <p className="text-[10px] text-slate-600 text-center py-6 uppercase tracking-wider">
+                    <p className="text-xs text-slate-600 text-center py-6 uppercase tracking-wider">
                       {locale === "en" ? "Empty grid" : "Griglia vuota"}
                     </p>
                   ) : (
@@ -267,12 +267,12 @@ export default function AdminGrid() {
                         <div className="flex items-center gap-2">
                           <span className="text-lime-400 font-black text-xs w-4 shrink-0">{entry.gridPosition ?? idx + 1}</span>
                           <div className="min-w-0 flex-1">
-                            <span className="block text-[11px] text-white font-semibold truncate">
+                            <span className="block text-xs text-white font-semibold truncate">
                               {entry.pilotName || (locale === "en" ? "Rider" : "Pilota")}
                             </span>
-                            <span className="block text-[9px] text-slate-500 truncate">{entry.bike.model.model}</span>
+                            <span className="block text-xs text-slate-400 truncate">{entry.bike.model.model}</span>
                           </div>
-                          <span className="text-[10px] font-mono font-bold text-white shrink-0">
+                          <span className="text-xs font-mono font-bold text-white shrink-0">
                             {bikeDisplayName(entry.bike)}
                           </span>
                         </div>
@@ -286,7 +286,7 @@ export default function AdminGrid() {
                               defaultValue={group.id}
                               disabled={isSubmitting}
                               onChange={(e) => e.currentTarget.form?.requestSubmit()}
-                              className="w-full bg-slate-950 border border-slate-880 text-[9px] text-slate-400 rounded px-1.5 py-0.5 outline-none focus:border-orange-500 cursor-pointer disabled:opacity-50"
+                              className="w-full bg-slate-950 border border-slate-880 text-xs text-slate-400 rounded px-1.5 py-0.5 outline-none focus:border-orange-500 cursor-pointer disabled:opacity-50"
                               title={locale === "en" ? "Move rider to another group" : "Sposta il pilota in un altro gruppo"}
                             >
                               {active.groups.map((g) => (
@@ -302,7 +302,7 @@ export default function AdminGrid() {
                   )}
                 </div>
 
-                <div className="px-3 py-2 border-t border-slate-850 text-[9px] font-mono text-slate-500 text-center">
+                <div className="px-3 py-2 border-t border-slate-850 text-xs font-mono text-slate-400 text-center">
                   {group.entries.length}/{group.capacity}
                 </div>
               </div>

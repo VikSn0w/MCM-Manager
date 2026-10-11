@@ -55,6 +55,7 @@ model BikeModel {
   torque            Float?
   torqueRpm         Int?
   usage             String   @default("BOTH") // "RENTAL" | "ACADEMY" | "BOTH"
+  isActive          Boolean  @default(true) // inactive models are hidden from the booking page
   gearbox           String? // e.g. "Automatic", "4-Speed", "5-Speed"
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt

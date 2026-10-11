@@ -44,9 +44,15 @@ export async function loader({ request }: Route.LoaderArgs) {
 export function meta({ data }: Route.MetaArgs) {
   const companyName = data?.companyConfig?.companyName || "MCM Racing School";
   const circuitName = data?.companyConfig?.circuitName || "Autodromo di Franciacorta";
+  if (data?.locale === "en") {
+    return [
+      { title: `Racing Academy - ${companyName}` },
+      { name: "description", content: `Learn to ride like a pro at ${circuitName}. Professional FIM coaching courses, telemetry analysis, lines correction, and race-ready Ohvale GP training bikes.` },
+    ];
+  }
   return [
     { title: `Racing Academy - ${companyName}` },
-    { name: "description", content: `Learn to ride like a pro at ${circuitName}. Professional FIM coaching courses, telemetry analysis, lines correction, and race-ready Ohvale GP training bikes.` },
+    { name: "description", content: `Impara a guidare come un professionista a ${circuitName}. Corsi di coaching FIM, analisi della telemetria, correzione delle traiettorie e moto Ohvale GP pronte per la pista.` },
   ];
 }
 
@@ -102,7 +108,7 @@ export default function Academy() {
               {user?.role === "ADMIN" && (
                 <Link to="/admin" className="text-orange-400 hover:text-orange-500 transition-colors flex items-center space-x-1">
                   <span>{t.backoffice}</span>
-                  <span className="bg-orange-500/20 text-orange-400 text-[10px] font-extrabold px-1.5 py-0.5 rounded border border-orange-500/30 uppercase">{t.staff}</span>
+                  <span className="bg-orange-500/20 text-orange-400 text-xs font-extrabold px-1.5 py-0.5 rounded border border-orange-500/30 uppercase">{t.staff}</span>
                 </Link>
               )}
             </nav>
@@ -126,7 +132,7 @@ export default function Academy() {
                   <Form method="post" action="/logout" className="inline">
                     <button 
                       type="submit" 
-                      className="text-xs font-bold uppercase text-slate-500 hover:text-red-400 transition-colors"
+                      className="text-xs font-bold uppercase text-slate-400 hover:text-red-400 transition-colors"
                     >
                       {t.logout}
                     </button>
@@ -155,23 +161,21 @@ export default function Academy() {
 
       {/* Hero Header Section */}
       <section className="relative pt-20 pb-16 sm:pt-28 sm:pb-24 overflow-hidden border-b border-slate-900">
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] bg-purple-600/5 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute top-1/3 left-1/4 w-96 h-96 bg-orange-600/5 rounded-full blur-3xl pointer-events-none" />
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
-          <div className="inline-flex items-center space-x-2 bg-slate-900 border border-slate-800 rounded-full px-4 py-1.5 mb-6 text-xs uppercase tracking-wider text-purple-400 font-bold shadow-inner animate-fade-in animation-delay-100">
-            <Award className="h-4.5 w-4.5 text-purple-400" />
-            <span>FIM Certificated Training Hub</span>
+          <div className="inline-flex items-center space-x-2 bg-slate-900 border border-slate-800 rounded-full px-4 py-1.5 mb-6 text-xs uppercase tracking-wider text-sky-400 font-bold shadow-inner">
+            <Award className="h-4.5 w-4.5 text-sky-400" />
+            <span>{locale === "en" ? "FIM Certificated Training Hub" : "Centro di formazione certificato FIM"}</span>
           </div>
 
-          <h1 className="text-4xl sm:text-6xl md:text-8xl font-black uppercase tracking-tighter text-white leading-none animate-fade-in animation-delay-200">
+          <h1 className="text-4xl sm:text-6xl md:text-8xl font-black uppercase tracking-tighter text-white leading-none">
             {locale === "en" ? "Racing Academy" : "Accademia Corse"} <br />
-            <span className="bg-gradient-to-r from-orange-500 via-orange-600 to-purple-500 bg-clip-text text-transparent">
+            <span className="text-orange-500">
               {locale === "en" ? "Sharpen Your Speed" : "Affila la Tua Velocità"}
             </span>
           </h1>
 
-          <p className="mt-6 max-w-2xl mx-auto text-lg md:text-xl text-slate-400 font-light leading-relaxed animate-fade-in animation-delay-300">
+          <p className="mt-6 max-w-2xl mx-auto text-lg md:text-xl text-slate-400 font-light leading-relaxed">
             {locale === "en"
               ? `Our customized coaching programs at ${companyConfig.circuitName} are designed to transform you from trackday enthusiast into a precise, high-performance racer.`
               : `I nostri programmi di coaching su misura presso il ${companyConfig.circuitName} sono progettati per trasformarti da semplice appassionato in un pilota preciso e veloce.`}
@@ -182,7 +186,7 @@ export default function Academy() {
       {/* Academy Courses Grid */}
       <section className="py-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center max-w-3xl mx-auto mb-20">
-          <h2 className="text-xs font-bold uppercase tracking-widest text-orange-500">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-orange-500">
             {locale === "en" ? "Courses Catalog" : "Catalogo Corsi"}
           </h2>
           <p className="mt-3 text-3xl sm:text-5xl font-black uppercase tracking-tight text-white">
@@ -192,7 +196,7 @@ export default function Academy() {
 
         {lessons.length === 0 ? (
           <div className="text-center py-20 bg-slate-900/40 border border-slate-850 rounded-3xl">
-            <span className="text-slate-500 font-mono text-xs uppercase tracking-widest">
+            <span className="text-slate-400 font-mono text-xs uppercase tracking-wider">
               {locale === "en" ? "No Active Academy Courses Available" : "Nessun Corso Academy Attivo al Momento"}
             </span>
           </div>
@@ -208,7 +212,7 @@ export default function Academy() {
               return (
                 <div 
                   key={lesson.id}
-                  className="bg-slate-900/40 backdrop-blur border border-slate-850 rounded-3xl p-8 flex flex-col justify-between shadow-2xl transition-all hover:-translate-y-1 group animate-fade-in hover-glow-purple"
+                  className="bg-slate-900/40 border border-slate-850 rounded-3xl p-8 flex flex-col justify-between shadow-2xl transition-all hover:-translate-y-1 group animate-fade-in hover-glow-sky"
                   style={{ animationDelay: `${(idx + 1) * 100}ms` }}
                 >
                   <div className="space-y-6">
@@ -244,7 +248,7 @@ export default function Academy() {
                     {bike ? (
                       <div className="pt-5 border-t border-slate-850/60 bg-slate-950/40 rounded-2xl p-4 border border-slate-900/50">
                         <div className="flex items-center justify-between gap-4 mb-3.5">
-                          <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Training Bike</span>
+                          <span className="text-xs text-slate-400 uppercase tracking-wider font-bold">{locale === "en" ? "Training Bike" : "Moto da addestramento"}</span>
                           <span className="text-xs font-extrabold text-orange-400 font-mono">{bike.name}</span>
                         </div>
 
@@ -258,27 +262,27 @@ export default function Academy() {
                           </div>
                         )}
 
-                        <div className="grid grid-cols-2 gap-3 text-[11px] font-mono text-slate-400">
+                        <div className="grid grid-cols-2 gap-3 text-xs font-mono text-slate-400">
                           <div>
-                            <span className="block text-[9px] text-slate-500 uppercase tracking-wider font-sans">Displacement</span>
+                            <span className="block text-xs text-slate-400 uppercase tracking-wider font-sans">{locale === "en" ? "Displacement" : "Cilindrata"}</span>
                             <span className="text-white font-bold">{bike.displacement}cc</span>
                           </div>
                           <div>
-                            <span className="block text-[9px] text-slate-500 uppercase tracking-wider font-sans">Gearbox</span>
-                            <span className="text-white font-bold">{bike.gearbox || "N/A"}</span>
+                            <span className="block text-xs text-slate-400 uppercase tracking-wider font-sans">{locale === "en" ? "Gearbox" : "Cambio"}</span>
+                            <span className="text-white font-bold">{bike.gearbox || "n.d."}</span>
                           </div>
                           <div>
-                            <span className="block text-[9px] text-slate-500 uppercase tracking-wider font-sans">Power output</span>
-                            <span className="text-white font-bold">{bike.hp ? `${bike.hp.toFixed(1)} HP` : "N/A"}{bike.hpRpm ? ` @ ${bike.hpRpm.toLocaleString()}` : ""}</span>
+                            <span className="block text-xs text-slate-400 uppercase tracking-wider font-sans">{locale === "en" ? "Power output" : "Potenza"}</span>
+                            <span className="text-white font-bold">{bike.hp ? `${bike.hp.toFixed(1)} ${locale === "en" ? "HP" : "CV"}` : "n.d."}{bike.hpRpm ? ` @ ${bike.hpRpm.toLocaleString()}` : ""}</span>
                           </div>
                           <div>
-                            <span className="block text-[9px] text-slate-500 uppercase tracking-wider font-sans">Max torque</span>
-                            <span className="text-white font-bold">{bike.torque ? `${bike.torque.toFixed(1)} Nm` : "N/A"}{bike.torqueRpm ? ` @ ${bike.torqueRpm.toLocaleString()}` : ""}</span>
+                            <span className="block text-xs text-slate-400 uppercase tracking-wider font-sans">{locale === "en" ? "Max torque" : "Coppia massima"}</span>
+                            <span className="text-white font-bold">{bike.torque ? `${bike.torque.toFixed(1)} Nm` : "n.d."}{bike.torqueRpm ? ` @ ${bike.torqueRpm.toLocaleString()}` : ""}</span>
                           </div>
                         </div>
                       </div>
                     ) : (
-                      <div className="pt-5 border-t border-slate-850/60 bg-slate-950/40 rounded-2xl p-4 text-center text-xs text-slate-500 border border-slate-900/50">
+                      <div className="pt-5 border-t border-slate-850/60 bg-slate-950/40 rounded-2xl p-4 text-center text-xs text-slate-400 border border-slate-900/50">
                         {locale === "en" ? "Assigned bike model details pending." : "Modello moto assegnato in attesa di definizione."}
                       </div>
                     )}
@@ -287,7 +291,7 @@ export default function Academy() {
                   {/* Pricing and Book trigger */}
                   <div className="mt-8 pt-5 border-t border-slate-850/60 flex items-center justify-between gap-4">
                     <div>
-                      <span className="block text-[9px] text-slate-500 uppercase tracking-widest font-mono">
+                      <span className="block text-xs text-slate-400 uppercase tracking-wider font-mono">
                         {locale === "en" ? "TUITION COST" : "COSTO CORSO"}
                       </span>
                       <span className="text-3xl font-black text-white font-mono">
@@ -314,7 +318,7 @@ export default function Academy() {
       <section className="py-24 bg-slate-900/30 border-t border-b border-slate-900 relative">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-3xl mx-auto mb-20">
-            <h2 className="text-xs font-bold uppercase tracking-widest text-purple-400">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-sky-400">
               {locale === "en" ? "Why MCM Academy" : "Perché Scegliere l'Accademia"}
             </h2>
             <p className="mt-3 text-3xl sm:text-5xl font-black uppercase tracking-tight text-white">
@@ -325,8 +329,8 @@ export default function Academy() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             
              {/* Feature 1 */}
-            <div className="bg-slate-900/40 border border-slate-850 p-8 rounded-3xl space-y-4 animate-fade-in animation-delay-100 hover-glow-purple">
-              <div className="h-12 w-12 bg-purple-950/60 border border-purple-500/20 text-purple-400 rounded-2xl flex justify-center items-center shadow-inner">
+            <div className="bg-slate-900/40 border border-slate-850 p-8 rounded-3xl space-y-4 hover-glow-sky">
+              <div className="h-12 w-12 bg-sky-950/60 border border-sky-500/20 text-sky-400 rounded-2xl flex justify-center items-center shadow-inner">
                 <Zap className="h-6 w-6" />
               </div>
               <h3 className="text-lg font-bold uppercase text-white font-mono">{locale === "en" ? "Active Telemetry Logs" : "Telemetria Attiva"}</h3>
@@ -338,8 +342,8 @@ export default function Academy() {
             </div>
 
             {/* Feature 2 */}
-            <div className="bg-slate-900/40 border border-slate-850 p-8 rounded-3xl space-y-4 animate-fade-in animation-delay-200 hover-glow-purple">
-              <div className="h-12 w-12 bg-purple-950/60 border border-purple-500/20 text-purple-400 rounded-2xl flex justify-center items-center shadow-inner">
+            <div className="bg-slate-900/40 border border-slate-850 p-8 rounded-3xl space-y-4 hover-glow-sky">
+              <div className="h-12 w-12 bg-sky-950/60 border border-sky-500/20 text-sky-400 rounded-2xl flex justify-center items-center shadow-inner">
                 <TrendingUp className="h-6 w-6" />
               </div>
               <h3 className="text-lg font-bold uppercase text-white font-mono">{locale === "en" ? "Video Line Corrections" : "Correzione Linee Video"}</h3>
@@ -351,8 +355,8 @@ export default function Academy() {
             </div>
 
             {/* Feature 3 */}
-            <div className="bg-slate-900/40 border border-slate-850 p-8 rounded-3xl space-y-4 animate-fade-in animation-delay-300 hover-glow-purple">
-              <div className="h-12 w-12 bg-purple-950/60 border border-purple-500/20 text-purple-400 rounded-2xl flex justify-center items-center shadow-inner">
+            <div className="bg-slate-900/40 border border-slate-850 p-8 rounded-3xl space-y-4 hover-glow-sky">
+              <div className="h-12 w-12 bg-sky-950/60 border border-sky-500/20 text-sky-400 rounded-2xl flex justify-center items-center shadow-inner">
                 <Award className="h-6 w-6" />
               </div>
               <h3 className="text-lg font-bold uppercase text-white font-mono">{locale === "en" ? "FIM License & Certificate" : "Certificato & Licenza FIM"}</h3>
@@ -369,9 +373,7 @@ export default function Academy() {
 
       {/* Call to Action Paddock Card */}
       <section className="py-24 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 print:hidden">
-        <div className="bg-gradient-to-r from-purple-800 to-orange-700 rounded-3xl p-8 sm:p-16 relative overflow-hidden shadow-2xl border border-purple-500/30 flex flex-col md:flex-row justify-between items-center gap-8">
-          <div className="absolute top-0 right-0 w-80 h-80 bg-white/5 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute -bottom-20 -left-20 w-80 h-80 bg-black/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="bg-slate-900 rounded-3xl p-8 sm:p-16 relative overflow-hidden border border-slate-800 flex flex-col md:flex-row justify-between items-center gap-8">
 
           <div className="relative z-10 max-w-xl text-center md:text-left">
             <h2 className="text-3xl sm:text-5xl font-black uppercase text-white tracking-tight leading-none">
@@ -394,7 +396,7 @@ export default function Academy() {
       </section>
 
       {/* Footer - Print hidden */}
-      <footer className="bg-slate-950 border-t border-slate-900 py-12 text-center text-xs text-slate-500 uppercase tracking-widest font-mono print:hidden">
+      <footer className="bg-slate-950 border-t border-slate-900 py-12 text-center text-xs text-slate-400 uppercase tracking-wider font-mono print:hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row justify-between items-center gap-6">
           <div className="flex flex-col items-center sm:items-start space-y-2">
             <div className="flex items-center space-x-2">
@@ -402,7 +404,7 @@ export default function Academy() {
               <span className="font-bold text-slate-400">{t.copyright} - {companyConfig.companyName} ({companyConfig.circuitName})</span>
             </div>
             {/* Pikosoft attribution */}
-            <div className="flex flex-wrap items-center gap-x-2 text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1 border-t border-slate-900/40 pt-2">
+            <div className="flex flex-wrap items-center gap-x-2 text-xs text-slate-400 font-bold uppercase tracking-wider mt-1 border-t border-slate-900/40 pt-2">
               <span>{locale === "en" ? "Software by" : "Software di"}</span>
               <a href="https://pikosoft.it" target="_blank" rel="noopener noreferrer" className="inline-flex items-center hover:opacity-80 transition-opacity">
                 <img src="/logobig.png" alt="Pikosoft Logo" className="h-4.5 object-contain" />
@@ -412,7 +414,7 @@ export default function Academy() {
               <img src="/logoleasio.png" alt={companyConfig.companyName} className="h-4.5 object-contain" />
             </div>
           </div>
-          <div className="flex space-x-6 text-slate-500">
+          <div className="flex space-x-6 text-slate-400">
             <Link to="/#fleet" className="hover:text-white transition-colors">{t.fleet}</Link>
             <Link to="/#calendar" className="hover:text-white transition-colors">{locale === "en" ? "Calendar" : "Calendario"}</Link>
             {user?.role === "ADMIN" ? (

@@ -36,7 +36,7 @@ export async function action({ request }: Route.ActionArgs) {
   const bikeAssignmentMode = bikeAssignmentModeRaw === "MANUAL" ? "MANUAL" : "AUTO";
 
   if (!companyName || !logoUrl || !circuitName) {
-    return { error: "All profile settings fields are mandatory." };
+    return { error: "Tutti i campi del profilo sono obbligatori." };
   }
 
   try {
@@ -59,9 +59,9 @@ export async function action({ request }: Route.ActionArgs) {
       },
     });
 
-    return { success: "Company branding successfully updated in the paddock database." };
+    return { success: "Dati dell'azienda aggiornati." };
   } catch (error: any) {
-    return { error: `Failed to update settings: ${error.message}` };
+    return { error: `Impossibile aggiornare le impostazioni: ${error.message}` };
   }
 }
 
@@ -81,7 +81,7 @@ export default function AdminSettings() {
       
       {/* Header title */}
       <div>
-        <span className="text-xs font-bold uppercase tracking-widest text-orange-500 font-mono">
+        <span className="text-xs font-bold uppercase tracking-wider text-orange-500 font-mono">
           {locale === "en" ? "SaaS Profile Customizer" : "Personalizzazione Profilo SaaS"}
         </span>
         <h1 className="text-3xl font-black uppercase text-white tracking-tight mt-1 flex items-center space-x-2">
@@ -110,7 +110,7 @@ export default function AdminSettings() {
       )}
 
       {/* Settings Form Card */}
-      <div className="bg-slate-900/60 backdrop-blur border border-slate-850 rounded-3xl p-6 sm:p-10 shadow-xl">
+      <div className="bg-slate-900/60 border border-slate-850 rounded-3xl p-6 sm:p-10 shadow-xl">
         <Form method="post" className="space-y-6">
           
           {/* Company Name */}
@@ -124,7 +124,7 @@ export default function AdminSettings() {
               name="companyName"
               required
               defaultValue={config.companyName}
-              placeholder="e.g. Ohvale Rentals Ltd"
+              placeholder="es. Ohvale Noleggi Srl"
               className="w-full bg-slate-950/80 border border-slate-800 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 text-white rounded-xl py-3.5 px-4 shadow-inner outline-none transition-all text-xs font-semibold"
             />
           </div>
@@ -140,7 +140,7 @@ export default function AdminSettings() {
               name="circuitName"
               required
               defaultValue={config.circuitName}
-              placeholder="e.g. Mugello Circuit"
+              placeholder="es. Autodromo del Mugello"
               className="w-full bg-slate-950/80 border border-slate-800 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 text-white rounded-xl py-3.5 px-4 shadow-inner outline-none transition-all text-xs font-semibold"
             />
           </div>
@@ -156,18 +156,18 @@ export default function AdminSettings() {
               name="logoUrl"
               required
               defaultValue={config.logoUrl}
-              placeholder="e.g. /images/company-logo.png"
+              placeholder="es. /images/logo-azienda.png"
               className="w-full bg-slate-950/80 border border-slate-800 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 text-white rounded-xl py-3.5 px-4 shadow-inner outline-none transition-all text-xs font-semibold"
             />
             
             {/* Visual Logo Preview */}
             {config.logoUrl && (
               <div className="mt-4 p-3 bg-slate-950 border border-slate-880 rounded-xl flex items-center space-x-3 w-fit">
-                <span className="text-[10px] text-slate-500 uppercase font-mono">{locale === "en" ? "Logo Preview:" : "Anteprima Logo:"}</span>
+                <span className="text-xs text-slate-400 uppercase font-mono">{locale === "en" ? "Logo Preview:" : "Anteprima Logo:"}</span>
                 <div className="h-10 bg-slate-900 border border-slate-850 px-3 py-1.5 rounded-lg flex items-center justify-center">
                   <img
                     src={config.logoUrl}
-                    alt="Current Company Logo"
+                    alt="Logo attuale"
                     className="h-full object-contain max-w-40"
                     onError={(e) => {
                       // Fallback text if image doesn't load
@@ -189,10 +189,10 @@ export default function AdminSettings() {
               type="text"
               name="googleMapsUrl"
               defaultValue={config.googleMapsUrl || ""}
-              placeholder="e.g. https://www.google.com/maps/embed?pb=..."
+              placeholder="es. https://www.google.com/maps/embed?pb=..."
               className="w-full bg-slate-950/80 border border-slate-800 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 text-white rounded-xl py-3.5 px-4 shadow-inner outline-none transition-all text-xs font-semibold"
             />
-            <p className="text-[10px] text-slate-500 leading-normal">
+            <p className="text-xs text-slate-400 leading-normal">
               {locale === "en"
                 ? "Provide a Google Maps iframe share embed URL (from Google Maps > Share > Embed map > src URL) to show an interactive map on the landing page, or standard link for button redirection."
                 : "Inserisci l'URL iframe di condivisione di Google Maps (da Google Maps > Condividi > Incorpora mappa > URL src) per mostrare la mappa interattiva sulla landing page, oppure un link standard per reindirizzare tramite pulsante."}
@@ -205,7 +205,7 @@ export default function AdminSettings() {
               <BikeIcon className="h-4 w-4 text-orange-500" />
               <span>{locale === "en" ? "Bike Assignment Policy" : "Politica di Assegnazione Moto"}</span>
             </label>
-            <p className="text-[10px] text-slate-500 leading-normal">
+            <p className="text-xs text-slate-400 leading-normal">
               {locale === "en"
                 ? "Customers always choose a model, never an individual bike. This setting decides who picks the actual unit (e.g. “Stoner 27”)."
                 : "I clienti scelgono sempre il modello, mai la singola moto. Questa impostazione decide chi sceglie l’esemplare (es. “Stoner 27”)."}
@@ -220,13 +220,13 @@ export default function AdminSettings() {
                 className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
                   bikeAssignmentMode === "AUTO"
                     ? "bg-slate-950 border-orange-500/60 text-white"
-                    : "bg-slate-950/40 hover:bg-slate-950/80 border-slate-900 text-slate-500"
+                    : "bg-slate-950/40 hover:bg-slate-950/80 border-slate-900 text-slate-400"
                 }`}
               >
                 <span className="block font-bold text-xs uppercase">
                   {locale === "en" ? "Automatic" : "Automatica"}
                 </span>
-                <span className="block text-[10px] text-slate-500 mt-1 leading-normal">
+                <span className="block text-xs text-slate-400 mt-1 leading-normal">
                   {locale === "en"
                     ? "The system allocates any free bike of the booked model. Nothing to review."
                     : "Il sistema assegna una moto libera del modello prenotato. Nessuna revisione necessaria."}
@@ -239,13 +239,13 @@ export default function AdminSettings() {
                 className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
                   bikeAssignmentMode === "MANUAL"
                     ? "bg-slate-950 border-orange-500/60 text-white"
-                    : "bg-slate-950/40 hover:bg-slate-950/80 border-slate-900 text-slate-500"
+                    : "bg-slate-950/40 hover:bg-slate-950/80 border-slate-900 text-slate-400"
                 }`}
               >
                 <span className="block font-bold text-xs uppercase">
                   {locale === "en" ? "Manual (MCM decides)" : "Manuale (decide MCM)"}
                 </span>
-                <span className="block text-[10px] text-slate-500 mt-1 leading-normal">
+                <span className="block text-xs text-slate-400 mt-1 leading-normal">
                   {locale === "en"
                     ? "Bikes are still reserved on booking so availability stays exact, but each booking waits in a review queue for staff to confirm or swap the units."
                     : "Le moto restano riservate alla prenotazione per mantenere esatta la disponibilità, ma ogni prenotazione attende in coda che lo staff confermi o cambi gli esemplari."}

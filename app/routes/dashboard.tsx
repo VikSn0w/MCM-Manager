@@ -83,7 +83,7 @@ export async function action({ request }: Route.ActionArgs) {
   const bookingId = formData.get("bookingId")?.toString();
   const intent = formData.get("intent")?.toString();
 
-  if (!bookingId) return { error: "Missing booking ID." };
+  if (!bookingId) return { error: "Prenotazione non specificata." };
 
   if (intent === "cancel") {
     // Check if the booking actually exists and belongs to the user
@@ -92,15 +92,15 @@ export async function action({ request }: Route.ActionArgs) {
     });
 
     if (!booking) {
-      return { error: "Booking not found." };
+      return { error: "Prenotazione non trovata." };
     }
 
     if (booking.userId !== userId) {
-      return { error: "Not authorized to cancel this booking." };
+      return { error: "Non hai i permessi per annullare questa prenotazione." };
     }
 
     if (booking.status === "CANCELLED") {
-      return { error: "This booking is already cancelled." };
+      return { error: "Questa prenotazione è già stata annullata." };
     }
 
     // Cancel booking
@@ -113,7 +113,7 @@ export async function action({ request }: Route.ActionArgs) {
     const requestHost = `${url.protocol}//${url.host}`;
     await sendBookingCancelledEmail(bookingId, requestHost);
 
-    return { success: "Booking successfully cancelled." };
+    return { success: "Prenotazione annullata." };
   }
 
   return null;
@@ -161,7 +161,7 @@ export default function Dashboard() {
               {user.role === "ADMIN" && (
                 <Link
                   to="/admin"
-                  className="bg-orange-600/10 border border-orange-500/20 text-orange-400 font-bold uppercase text-[10px] tracking-wider px-3.5 py-2 rounded-lg hover:bg-orange-500/10 transition-colors"
+                  className="bg-orange-600/10 border border-orange-500/20 text-orange-400 font-bold uppercase text-xs tracking-wider px-3.5 py-2 rounded-lg hover:bg-orange-500/10 transition-colors"
                 >
                   {t.backoffice}
                 </Link>
@@ -186,7 +186,7 @@ export default function Dashboard() {
         {/* Welcome row */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
           <div>
-            <span className="text-xs font-bold uppercase tracking-widest text-orange-500">{t.racerHub}</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-orange-500">{t.racerHub}</span>
             <h1 className="text-3xl sm:text-4xl font-black uppercase text-white tracking-tight mt-1">
               {locale === "en" ? "Hi, " : "Ciao, "}{user.name}!
             </h1>
@@ -205,28 +205,28 @@ export default function Dashboard() {
         {/* Quick Stats Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-12">
           
-          <div className="bg-slate-900/60 backdrop-blur border border-slate-850 p-6 rounded-2xl">
-            <span className="block text-slate-500 uppercase tracking-wider text-[10px] font-bold">{t.activeReservations}</span>
+          <div className="bg-slate-900/60 border border-slate-850 p-6 rounded-2xl">
+            <span className="block text-slate-400 uppercase tracking-wider text-xs font-bold">{t.activeReservations}</span>
             <span className="text-3xl font-black text-white mt-2 block">{activeBookings.length}</span>
-            <span className="text-[10px] text-slate-400 block mt-1 uppercase">{t.upcomingDays}</span>
+            <span className="text-xs text-slate-400 block mt-1 uppercase">{t.upcomingDays}</span>
           </div>
 
-          <div className="bg-slate-900/60 backdrop-blur border border-slate-850 p-6 rounded-2xl">
-            <span className="block text-slate-500 uppercase tracking-wider text-[10px] font-bold">{t.totalSessionsCount}</span>
+          <div className="bg-slate-900/60 border border-slate-850 p-6 rounded-2xl">
+            <span className="block text-slate-400 uppercase tracking-wider text-xs font-bold">{t.totalSessionsCount}</span>
             <span className="text-3xl font-black text-white mt-2 block">{totalSessions}</span>
-            <span className="text-[10px] text-slate-400 block mt-1 uppercase">{t.segmentsLogged}</span>
+            <span className="text-xs text-slate-400 block mt-1 uppercase">{t.segmentsLogged}</span>
           </div>
 
-          <div className="bg-slate-900/60 backdrop-blur border border-slate-850 p-6 rounded-2xl">
-            <span className="block text-slate-500 uppercase tracking-wider text-[10px] font-bold">{t.crashCoverProtection}</span>
+          <div className="bg-slate-900/60 border border-slate-850 p-6 rounded-2xl">
+            <span className="block text-slate-400 uppercase tracking-wider text-xs font-bold">{t.crashCoverProtection}</span>
             <span className="text-3xl font-black text-green-400 mt-2 block">{insuredCount}</span>
-            <span className="text-[10px] text-slate-400 block mt-1 uppercase">{t.insuredOhvales}</span>
+            <span className="text-xs text-slate-400 block mt-1 uppercase">{t.insuredOhvales}</span>
           </div>
 
-          <div className="bg-slate-900/60 backdrop-blur border border-slate-850 p-6 rounded-2xl">
-            <span className="block text-slate-500 uppercase tracking-wider text-[10px] font-bold">{t.grandInvestment}</span>
+          <div className="bg-slate-900/60 border border-slate-850 p-6 rounded-2xl">
+            <span className="block text-slate-400 uppercase tracking-wider text-xs font-bold">{t.grandInvestment}</span>
             <span className="text-3xl font-black text-orange-500 mt-2 block">€{totalSpent.toFixed(0)}</span>
-            <span className="text-[10px] text-slate-400 block mt-1 uppercase">{t.paddockSpend}</span>
+            <span className="text-xs text-slate-400 block mt-1 uppercase">{t.paddockSpend}</span>
           </div>
 
         </div>
@@ -240,9 +240,9 @@ export default function Dashboard() {
 
           {bookings.length === 0 ? (
             <div className="bg-slate-900/40 border border-slate-850 rounded-3xl p-16 text-center space-y-4">
-              <Flag className="h-14 w-14 text-slate-700 mx-auto animate-pulse" />
+              <Flag className="h-14 w-14 text-slate-700 mx-auto" />
               <h3 className="text-lg font-bold text-slate-300 uppercase">{t.noReservations}</h3>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto">{t.noReservationsSub}</p>
+              <p className="text-xs text-slate-400 max-w-sm mx-auto">{t.noReservationsSub}</p>
               <Link
                 to="/book"
                 className="inline-block bg-slate-900 hover:bg-slate-850 border border-slate-800 text-orange-500 font-bold uppercase text-xs px-6 py-3.5 rounded-xl transition-colors cursor-pointer"
@@ -260,7 +260,7 @@ export default function Dashboard() {
                 return (
                   <div 
                     key={booking.id} 
-                    className={`bg-slate-900/60 backdrop-blur border rounded-3xl overflow-hidden shadow-xl relative transition-all ${
+                    className={`bg-slate-900/60 border rounded-3xl overflow-hidden shadow-xl relative transition-all ${
                       isCancelled 
                         ? "border-red-950/30 opacity-60" 
                         : "border-slate-800/80 hover:border-slate-700/80"
@@ -281,11 +281,11 @@ export default function Dashboard() {
                       {/* Status and sharing badges */}
                       <div className="flex items-center space-x-2">
                         {booking.userId !== user.id && (
-                          <span className="text-[9px] bg-blue-950/60 text-blue-400 border border-blue-500/20 font-black uppercase px-2 py-0.5 rounded tracking-wide">
+                          <span className="text-xs bg-blue-950/60 text-blue-400 border border-blue-500/20 font-black uppercase px-2 py-0.5 rounded tracking-wide">
                             {locale === "en" ? "Shared Pass" : "Pass Condiviso"}
                           </span>
                         )}
-                        <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded border tracking-widest ${
+                        <span className={`text-xs font-extrabold uppercase px-2 py-0.5 rounded border tracking-wider ${
                           isCancelled
                             ? "bg-red-950/60 text-red-400 border-red-500/10"
                             : booking.status === "PENDING"
@@ -309,30 +309,30 @@ export default function Dashboard() {
                       {/* Grid params */}
                       <div className="grid grid-cols-2 gap-y-3.5 text-xs border-b border-slate-850/80 pb-4">
                         <div>
-                          <span className="block text-slate-500 uppercase tracking-widest text-[9px]">{t.paddockId}</span>
+                          <span className="block text-slate-400 uppercase tracking-wider text-xs">{t.paddockId}</span>
                           <span className="font-mono font-extrabold text-white mt-0.5 block uppercase">{booking.id}</span>
                         </div>
                         <div>
-                          <span className="block text-slate-500 uppercase tracking-widest text-[9px]">{t.grandTotal}</span>
+                          <span className="block text-slate-400 uppercase tracking-wider text-xs">{t.grandTotal}</span>
                           <span className="font-extrabold text-white mt-0.5 block">€{booking.totalPrice.toFixed(2)}</span>
                         </div>
                         <div>
-                          <span className="block text-slate-500 uppercase tracking-widest text-[9px]">{t.riderCrew}</span>
-                          <span className="font-extrabold text-white mt-0.5 block">{booking.peopleCount} racer(s)</span>
+                          <span className="block text-slate-400 uppercase tracking-wider text-xs">{t.riderCrew}</span>
+                          <span className="font-extrabold text-white mt-0.5 block">{booking.peopleCount} {locale === "en" ? (booking.peopleCount === 1 ? "rider" : "riders") : (booking.peopleCount === 1 ? "pilota" : "piloti")}</span>
                         </div>
                         <div>
-                          <span className="block text-slate-500 uppercase tracking-widest text-[9px]">{locale === "en" ? "Format & Grid" : "Formato e Griglia"}</span>
+                          <span className="block text-slate-400 uppercase tracking-wider text-xs">{locale === "en" ? "Format & Grid" : "Formato e Griglia"}</span>
                           <span className="font-extrabold text-white mt-0.5 block">
                             {booking.bookingType === "CHAMPIONSHIP"
                               ? `${booking.championshipType}`
-                              : "Standard Packs"}
+                              : (locale === "en" ? "Session packs" : "Turni standard")}
                             {" ("}
                             {booking.bikeSelectionMode === "FIXED" ? (locale === "en" ? "Fixed" : "Monomarca") : (locale === "en" ? "Mixed" : "Misto")}
                             {")"}
                           </span>
                         </div>
                         <div>
-                          <span className="block text-slate-500 uppercase tracking-widest text-[9px]">{t.trackSessions}</span>
+                          <span className="block text-slate-400 uppercase tracking-wider text-xs">{t.trackSessions}</span>
                           <span className="font-extrabold text-white mt-0.5 block">
                             {locale === "en" 
                               ? `${booking.sessionsCount} Session(s)` 
@@ -340,14 +340,14 @@ export default function Dashboard() {
                           </span>
                         </div>
                         <div>
-                          <span className="block text-slate-500 uppercase tracking-widest text-[9px]">{t.operatingHours}</span>
+                          <span className="block text-slate-400 uppercase tracking-wider text-xs">{t.operatingHours}</span>
                           <span className="font-extrabold text-orange-400 mt-0.5 block font-mono">{booking.hours}</span>
                         </div>
                       </div>
 
                       {/* Assigned bikes with crash protection info */}
                       <div className="space-y-2">
-                        <span className="block text-[9px] text-slate-500 uppercase tracking-widest font-bold">{t.allocatedFleetLabel}</span>
+                        <span className="block text-xs text-slate-400 uppercase tracking-wider font-bold">{t.allocatedFleetLabel}</span>
                         <div className="space-y-1.5">
                           {booking.bikes.map((bb, index) => (
                             <div key={index} className="flex justify-between items-center text-xs bg-slate-950 p-2.5 rounded-lg border border-slate-900">
@@ -357,15 +357,15 @@ export default function Dashboard() {
                               </span>
                               <div className="flex items-center gap-1.5">
                                 {bb.insuranceSelected ? (
-                                  <span className="text-[9px] bg-green-500/10 border border-green-500/20 text-green-400 font-bold uppercase px-2 py-0.5 rounded flex items-center space-x-1 shrink-0">
+                                  <span className="text-xs bg-green-500/10 border border-green-500/20 text-green-400 font-bold uppercase px-2 py-0.5 rounded flex items-center space-x-1 shrink-0">
                                     <ShieldCheck className="h-3 w-3" />
                                     <span>{t.coverEnabled} (€{bb.bike.model.insuranceCoverage})</span>
                                   </span>
                                 ) : (
-                                  <span className="text-[9px] text-slate-600 uppercase font-mono shrink-0">{t.noCover}</span>
+                                  <span className="text-xs text-slate-600 uppercase font-mono shrink-0">{t.noCover}</span>
                                 )}
                                 {bb.apparelSelected && (
-                                  <span className="text-[9px] bg-blue-500/10 border border-blue-500/20 text-blue-400 font-bold uppercase px-2 py-0.5 rounded flex items-center space-x-1 shrink-0">
+                                  <span className="text-xs bg-blue-500/10 border border-blue-500/20 text-blue-400 font-bold uppercase px-2 py-0.5 rounded flex items-center space-x-1 shrink-0">
                                     <span>{locale === "en" ? "Apparel" : "Abbigliamento"}</span>
                                   </span>
                                 )}
@@ -379,7 +379,7 @@ export default function Dashboard() {
                       <div className="pt-4 border-t border-slate-850 flex justify-between items-center gap-4">
                         <Link
                           to={`/order/${booking.id}`}
-                          className="text-[10px] font-extrabold uppercase px-4 py-2 bg-slate-950 hover:bg-slate-900 border border-slate-850 hover:border-slate-750 text-slate-350 hover:text-white rounded-lg transition-all text-center cursor-pointer"
+                          className="text-xs font-extrabold uppercase px-4 py-2 bg-slate-950 hover:bg-slate-900 border border-slate-850 hover:border-slate-750 text-slate-350 hover:text-white rounded-lg transition-all text-center cursor-pointer"
                         >
                           {locale === "en" ? "View Pass / PDF" : "Vedi Pass / PDF"}
                         </Link>
@@ -391,7 +391,7 @@ export default function Dashboard() {
                             <button
                               type="submit"
                               disabled={isSubmitting}
-                              className="text-[10px] font-extrabold uppercase px-4 py-2 bg-red-950/20 hover:bg-red-600 border border-red-500/20 hover:border-transparent text-red-400 hover:text-white rounded-lg transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+                              className="text-xs font-extrabold uppercase px-4 py-2 bg-red-950/20 hover:bg-red-600 border border-red-500/20 hover:border-transparent text-red-400 hover:text-white rounded-lg transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer"
                               onClick={(e) => {
                                 if (!confirm(t.cancellationConfirm)) {
                                   e.preventDefault();
@@ -415,7 +415,7 @@ export default function Dashboard() {
       </main>
 
       {/* Platform Branding Footer */}
-      <div className="max-w-7xl mx-auto text-center py-8 border-t border-slate-900/60 mt-12 text-[10px] text-slate-500 font-bold uppercase tracking-wider font-mono space-y-1">
+      <div className="max-w-7xl mx-auto text-center py-8 border-t border-slate-900/60 mt-12 text-xs text-slate-400 font-bold uppercase tracking-wider font-mono space-y-1">
         <div className="flex justify-center items-center space-x-2">
           <span>{locale === "en" ? "Software by" : "Software di"}</span>
           <a href="https://pikosoft.it" target="_blank" rel="noopener noreferrer" className="inline-flex items-center hover:opacity-80 transition-opacity">

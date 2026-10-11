@@ -60,6 +60,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       where: { 
         status: "AVAILABLE",
         model: {
+          isActive: true,
           NOT: {
             usage: "ACADEMY"
           }
@@ -153,43 +154,40 @@ export async function action({ request }: Route.ActionArgs) {
   const ridersCount = parseInt(formData.get("ridersCount")?.toString() || "0", 10);
   const bookingType = formData.get("bookingType")?.toString() || "STANDARD";
   const championshipType = formData.get("championshipType")?.toString() || null;
-  const bikeSelectionMode = formData.get("bikeSelectionMode")?.toString() || "MIXED";
+  // A race is run on one bike model only, so every booking is a fixed-model grid.
+  const bikeSelectionMode = "FIXED";
 
   const sessionsCountRaw = formData.get("sessionsCount")?.toString();
   let sessionsCount = parseInt(sessionsCountRaw || "0", 10);
 
   if (bookingType !== "STANDARD" && bookingType !== "CHAMPIONSHIP") {
-    return { error: "Invalid booking type." };
-  }
-
-  if (bikeSelectionMode !== "MIXED" && bikeSelectionMode !== "FIXED") {
-    return { error: "Invalid bike selection mode." };
+    return { error: "Tipo di prenotazione non valido." };
   }
 
   if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    return { error: "Invalid or missing booking date." };
+    return { error: "Data di prenotazione non valida o mancante." };
   }
 
   if (!Number.isInteger(ridersCount) || ridersCount <= 0 || ridersCount > MAX_RIDERS_PER_BOOKING) {
-    return { error: `Rider count must be between 1 and ${MAX_RIDERS_PER_BOOKING}.` };
+    return { error: `Il numero di piloti deve essere tra 1 e ${MAX_RIDERS_PER_BOOKING}.` };
   }
 
   let targetChampionship = null;
   if (bookingType === "CHAMPIONSHIP") {
     if (!championshipType) {
-      return { error: "No championship format selected." };
+      return { error: "Nessun formato di campionato selezionato." };
     }
     targetChampionship = await prisma.championship.findFirst({
       where: { name: championshipType, isAvailable: true },
       include: { groups: { orderBy: [{ sortOrder: "asc" }, { name: "asc" }] } },
     });
     if (!targetChampionship) {
-      return { error: `Whoops! The selected championship package "${championshipType}" is not active or does not exist.` };
+      return { error: `Ops! Il pacchetto campionato "${championshipType}" non è attivo o non esiste.` };
     }
     sessionsCount = targetChampionship.sessionsCount;
 
     if (ridersCount < targetChampionship.minRacers) {
-      return { error: `Championship bookings require a minimum grid of ${targetChampionship.minRacers} racers.` };
+      return { error: `Le prenotazioni di campionato richiedono una griglia minima di ${targetChampionship.minRacers} piloti.` };
     }
   }
 
@@ -197,7 +195,7 @@ export async function action({ request }: Route.ActionArgs) {
   const bikesJson = formData.get("bikesAssignment")?.toString() || "[]"; // array of {modelId, insuranceSelected, apparelSelected}
 
   if (!Number.isInteger(sessionsCount) || sessionsCount <= 0 || !selectedHoursStr) {
-    return { error: "Missing essential paddock booking details." };
+    return { error: "Mancano i dati essenziali della prenotazione." };
   }
 
   let selectedHours = selectedHoursStr.split(",").map(h => h.trim()).filter(Boolean);
@@ -227,18 +225,18 @@ export async function action({ request }: Route.ActionArgs) {
       return {
         error:
           conflict.reason === "FULL_DAY"
-            ? `The circuit is reserved for "${conflict.championshipName}" on ${dateStr}. Pick another date.`
-            : `"${conflict.championshipName}" has the track at ${conflict.hours.join(", ")} on ${dateStr}. Pick different session times.`,
+            ? `Il circuito è riservato a "${conflict.championshipName}" il ${dateStr}. Scegli un'altra data.`
+            : `"${conflict.championshipName}" ha la pista alle ${conflict.hours.join(", ")} il ${dateStr}. Scegli altri orari.`,
       };
     }
   }
 
   if (selectedHours.length === 0) {
-    return { error: "Select at least one session slot." };
+    return { error: "Seleziona almeno un turno." };
   }
 
   if (new Set(selectedHours).size !== selectedHours.length) {
-    return { error: "The same session slot was selected more than once." };
+    return { error: "Lo stesso turno è stato selezionato più volte." };
   }
 
   // Only slots that actually exist may be booked
@@ -246,18 +244,18 @@ export async function action({ request }: Route.ActionArgs) {
   const knownSlotTimes = new Set(knownSlots.map(s => s.time));
   const unknownSlot = selectedHours.find(h => !knownSlotTimes.has(h));
   if (unknownSlot) {
-    return { error: `"${unknownSlot}" is not a valid session slot.` };
+    return { error: `"${unknownSlot}" non è un turno valido.` };
   }
 
   let rawAssignments: unknown;
   try {
     rawAssignments = JSON.parse(bikesJson);
   } catch {
-    return { error: "Malformed bike assignment payload." };
+    return { error: "Dati di assegnazione moto non validi." };
   }
 
   if (!Array.isArray(rawAssignments)) {
-    return { error: "Malformed bike assignment payload." };
+    return { error: "Dati di assegnazione moto non validi." };
   }
 
   const bikeModelAssignments: Array<{
@@ -272,22 +270,22 @@ export async function action({ request }: Route.ActionArgs) {
   // Championship riders race in a skill group, and every rider must land in one.
   const championshipGroups = targetChampionship?.groups ?? [];
   if (bookingType === "CHAMPIONSHIP" && championshipGroups.length === 0) {
-    return { error: "This championship has no skill groups yet. Please contact the paddock." };
+    return { error: "Questo campionato non ha ancora gruppi di livello. Contatta il paddock." };
   }
   const groupsById = new Map(championshipGroups.map((g) => [g.id, g]));
 
   for (const entry of rawAssignments) {
     if (typeof entry !== "object" || entry === null) {
-      return { error: "Malformed bike assignment payload." };
+      return { error: "Dati di assegnazione moto non validi." };
     }
     const candidate = entry as Record<string, unknown>;
     if (typeof candidate.modelId !== "string" || !candidate.modelId) {
-      return { error: "Every rider must be assigned an available Ohvale GP model." };
+      return { error: "Ogni pilota deve avere un modello Ohvale GP disponibile." };
     }
     let championshipGroupId: string | undefined;
     if (bookingType === "CHAMPIONSHIP") {
       if (typeof candidate.championshipGroupId !== "string" || !groupsById.has(candidate.championshipGroupId)) {
-        return { error: "Every racer must pick a skill group for this championship." };
+        return { error: "Ogni pilota deve scegliere un gruppo di livello per questo campionato." };
       }
       championshipGroupId = candidate.championshipGroupId;
     }
@@ -303,7 +301,7 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   if (bikeModelAssignments.length !== ridersCount) {
-    return { error: "Every rider must be assigned an available Ohvale GP model." };
+    return { error: "Ogni pilota deve avere un modello Ohvale GP disponibile." };
   }
 
   // Everything below reads and writes availability, so it runs in a single
@@ -318,7 +316,7 @@ export async function action({ request }: Route.ActionArgs) {
       });
 
       if (dayConfig && !dayConfig.isAvailable) {
-        throw new BookingError(`Sorry! The track is fully closed on ${dateStr} for: ${dayConfig.notes || "Private events"}.`);
+        throw new BookingError(`Spiacenti! La pista è chiusa il ${dateStr} per: ${dayConfig.notes || "eventi privati"}.`);
       }
 
       const slotCapacity = dayConfig ? dayConfig.maxCapacityPerSlot : 5; // standard max capacity
@@ -339,7 +337,7 @@ export async function action({ request }: Route.ActionArgs) {
 
         if (bookedCount + ridersCount > slotCapacity) {
           throw new BookingError(
-            `Capacity overflow for ${hour} slot. Remaining spots: ${slotCapacity - bookedCount}. Selected group size: ${ridersCount}.`
+            `Capacità superata per il turno delle ${hour}. Posti rimasti: ${slotCapacity - bookedCount}. Piloti selezionati: ${ridersCount}.`
           );
         }
       }
@@ -383,6 +381,7 @@ export async function action({ request }: Route.ActionArgs) {
         where: {
           status: "AVAILABLE",
           model: {
+            isActive: true,
             NOT: {
               usage: "ACADEMY"
             }
@@ -411,7 +410,7 @@ export async function action({ request }: Route.ActionArgs) {
           if (taken + wanted > group.capacity) {
             const left = Math.max(0, group.capacity - taken);
             throw new BookingError(
-              `The "${group.name}" group has ${left} place(s) left but ${wanted} racer(s) were entered for it.`
+              `Il gruppo "${group.name}" ha ${left} posti liberi ma sono stati inseriti ${wanted} piloti.`
             );
           }
         }
@@ -442,7 +441,7 @@ export async function action({ request }: Route.ActionArgs) {
         );
         if (!candidateBike) {
           const modelDetails = await tx.bikeModel.findUnique({ where: { id: assignment.modelId } });
-          throw new BookingError(`Sorry! There are no more available Ohvale GP bikes of model "${modelDetails?.name || "selected"}" for this date.`);
+          throw new BookingError(`Spiacenti! Non ci sono più Ohvale GP del modello "${modelDetails?.name || "selezionato"}" per questa data.`);
         }
         claimed.add(candidateBike.id);
         allocatedInRequest.set(key, claimed);
@@ -470,7 +469,7 @@ export async function action({ request }: Route.ActionArgs) {
           });
         const hasEnoughForFixed = Object.values(modelCounts).some(count => count >= ridersCount);
         if (!hasEnoughForFixed) {
-          throw new BookingError(`Sorry! There are not enough unreserved Ohvale bikes of a single model to support a Fixed Grid booking of ${ridersCount} riders on this date.`);
+          throw new BookingError(`Spiacenti! Non ci sono abbastanza Ohvale libere dello stesso modello per una prenotazione di ${ridersCount} piloti in questa data.`);
         }
 
         const selectedBikes = bikeAssignments.map((assign) =>
@@ -478,7 +477,7 @@ export async function action({ request }: Route.ActionArgs) {
         );
         const models = selectedBikes.map(b => b?.model.model).filter(Boolean);
         if (new Set(models).size > 1) {
-          throw new BookingError("Fixed grid mode requires all riders to compete on the exact same bike model.");
+          throw new BookingError("Tutti i piloti devono correre con lo stesso identico modello di moto.");
         }
       }
 
@@ -490,11 +489,11 @@ export async function action({ request }: Route.ActionArgs) {
       });
 
       if (!tariff) {
-        throw new BookingError("Pricing tariff rules for this day of the week are missing.");
+        throw new BookingError("Mancano le tariffe per questo giorno della settimana.");
       }
 
       if (bookingType === "STANDARD" && (sessionsCount < tariff.minSessions || sessionsCount > tariff.maxSessions)) {
-        throw new BookingError(`Session count must be between ${tariff.minSessions} and ${tariff.maxSessions} for this day.`);
+        throw new BookingError(`Il numero di turni deve essere tra ${tariff.minSessions} e ${tariff.maxSessions} per questo giorno.`);
       }
 
       const customModifier = dayConfig?.customPriceModifier || 1.0;
@@ -502,7 +501,7 @@ export async function action({ request }: Route.ActionArgs) {
 
       if (bookingType === "CHAMPIONSHIP") {
         if (!targetChampionship) {
-          throw new BookingError("No championship package found.");
+          throw new BookingError("Pacchetto campionato non trovato.");
         }
         finalPrice += targetChampionship.price * ridersCount;
       } else {
@@ -522,7 +521,7 @@ export async function action({ request }: Route.ActionArgs) {
       for (const assignment of bikeAssignments) {
         const bike = availableBikesSystem.find(b => b.id === assignment.bikeId);
         if (!bike || bike.status !== "AVAILABLE") {
-          throw new BookingError("One of the selected bikes is not available.");
+          throw new BookingError("Una delle moto selezionate non è disponibile.");
         }
 
         if (bookingType === "STANDARD") {
@@ -640,7 +639,7 @@ export async function action({ request }: Route.ActionArgs) {
     }
     // Prisma raises P2034 when a serializable transaction loses a write race.
     if (typeof err === "object" && err !== null && (err as { code?: string }).code === "P2034") {
-      return { error: "Someone just booked those spots. Please review availability and try again." };
+      return { error: "Qualcuno ha appena prenotato quei posti. Controlla la disponibilità e riprova." };
     }
     throw err;
   }
@@ -686,6 +685,33 @@ export default function Book() {
 
   // Wizard state machine
   const [step, setStep] = useState(1);
+  const [stepError, setStepError] = useState<string | null>(null);
+  const [showNameErrors, setShowNameErrors] = useState(false);
+
+  // Each step gets its own history entry so the browser Back button walks the
+  // wizard instead of leaving the page and losing the form.
+  const goToStep = (next: number) => {
+    setStepError(null);
+    setStep(next);
+    if (typeof window !== "undefined") {
+      window.history.pushState({ bookStep: next }, "");
+      window.scrollTo({ top: 0 });
+    }
+  };
+
+  useEffect(() => {
+    const onPop = (e: PopStateEvent) => {
+      const target = e.state?.bookStep;
+      if (typeof target === "number") {
+        setStepError(null);
+        setStep(target);
+      } else {
+        setStep(1);
+      }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   // Form selections
   const [bookingType, setBookingType] = useState<"STANDARD" | "CHAMPIONSHIP">(
@@ -694,7 +720,7 @@ export default function Book() {
   const [championshipType, setChampionshipType] = useState<string>(
     preSelectedChampionship ? preSelectedChampionship.name : (championships[0]?.name || "GP Sprint")
   );
-  const [bikeSelectionMode, setBikeSelectionMode] = useState<"MIXED" | "FIXED">("MIXED");
+  const bikeSelectionMode = "FIXED" as const;
   const uniqueModels = Array.from(new Set(bikes.map(b => b.model.model)));
   const uniqueBikeModels = Array.from(new Map(bikes.map(b => [b.model.id, b.model])).values());
   const [selectedFixedModel, setSelectedFixedModel] = useState<string>(uniqueModels[0] || "");
@@ -953,25 +979,34 @@ export default function Book() {
   };
 
   const handleNextStep = () => {
+    const en = locale === "en";
     if (step === 1) {
-      if (!date) return;
-      const t = getTariffForDate();
-      if (t?.dayConfig && !t.dayConfig.isAvailable) return;
-      if (!isEnoughBikes) return;
-
-      // Validate that all pilot names are filled out
-      const hasMissingNames = pilots.some((p) => !p.name.trim());
-      if (hasMissingNames) {
-        alert(
-          locale === "en"
-            ? "Please enter the names of all pilots before continuing."
-            : "Per favore inserisci il nome di tutti i piloti prima di continuare."
-        );
+      if (!date) {
+        setStepError(en ? "Pick a date for your track day." : "Scegli la data della tua giornata in pista.");
+        document.querySelector<HTMLInputElement>("input[type=date]")?.focus();
+        return;
+      }
+      const tariffForDate = getTariffForDate();
+      if (tariffForDate?.dayConfig && !tariffForDate.dayConfig.isAvailable) {
+        setStepError(en ? "The track is closed on this date. Pick another day." : "Il circuito è chiuso in questa data. Scegli un altro giorno.");
+        return;
+      }
+      if (!isEnoughBikes) {
+        setStepError(en
+          ? `Only ${totalAvailableBikes} bike(s) are free on this date for ${ridersCount} rider(s). Reduce the crew or pick another day.`
+          : `Sono libere solo ${totalAvailableBikes} moto in questa data per ${ridersCount} piloti. Riduci l'equipaggio o scegli un altro giorno.`);
+        return;
+      }
+      goToStep(2);
+    } else if (step === 2) {
+      const firstMissing = pilots.findIndex((p) => !p.name.trim());
+      if (firstMissing !== -1) {
+        setShowNameErrors(true);
+        setStepError(en ? "Enter the name of every pilot to continue." : "Inserisci il nome di tutti i piloti per continuare.");
+        document.getElementById(`pilot-name-${firstMissing}`)?.focus();
         return;
       }
 
-      setStep(2);
-      
       // Initialize bike assignments with empty or fallback values matching riders count
       const initial = Array.from({ length: ridersCount }).map((_, i) => {
         const defaultModelId = bikeSelectionMode === "FIXED"
@@ -990,12 +1025,21 @@ export default function Book() {
         next.length = ridersCount;
         return Array.from({ length: ridersCount }, (_, i) => next[i] || "");
       });
-    } else if (step === 2) {
-      if (selectedHours.length === 0) return;
-      const incomplete = bikesAssignment.some(ba => !ba.modelId);
-      if (incomplete) return;
-      if (!allRidersHaveGroup) return;
-      setStep(3);
+      goToStep(3);
+    } else if (step === 3) {
+      if (selectedHours.length === 0) {
+        setStepError(en ? "Select at least one time slot." : "Seleziona almeno un orario.");
+        return;
+      }
+      if (bikesAssignment.some(ba => !ba.modelId)) {
+        setStepError(en ? "Choose a bike model for every rider." : "Scegli un modello di moto per ogni pilota.");
+        return;
+      }
+      if (!allRidersHaveGroup) {
+        setStepError(en ? "Assign every rider to a group." : "Assegna ogni pilota a un gruppo.");
+        return;
+      }
+      goToStep(4);
     }
   };
 
@@ -1012,75 +1056,75 @@ export default function Book() {
         <div className="max-w-xl mx-auto w-full relative z-10">
           <div className="bg-slate-900 border border-green-500/30 rounded-3xl overflow-hidden shadow-2xl shadow-green-500/5">
             {/* Header paddock badge */}
-            <div className="bg-gradient-to-r from-green-600 to-emerald-600 p-6 flex flex-col items-center text-center">
-              <CheckCircle className="h-14 w-14 text-white mb-2 animate-bounce" />
+            <div className="bg-green-700 p-6 flex flex-col items-center text-center">
+              <CheckCircle className="h-14 w-14 text-white mb-2" />
               <h2 className="text-2xl font-black uppercase tracking-tight text-white">{t.bookingConfirmed}</h2>
-              <p className="text-xs text-white/80 font-bold uppercase tracking-widest mt-1">{t.officialPaddockBadge}</p>
+              <p className="text-xs text-white/80 font-bold uppercase tracking-wider mt-1">{t.officialPaddockBadge}</p>
             </div>
 
             <div className="p-8 space-y-6">
               
               {/* Receipt pass details */}
               <div className="border-2 border-dashed border-slate-800 rounded-2xl p-6 relative bg-slate-950/40">
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-slate-900 border border-slate-800 text-[10px] uppercase font-bold text-slate-400 px-3 py-1 rounded-full">
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-slate-900 border border-slate-800 text-xs uppercase font-bold text-slate-400 px-3 py-1 rounded-full">
                   {t.paddockReceipt}
                 </div>
 
                 <div className="space-y-4 pt-2">
                   <div className="flex justify-between border-b border-slate-900 pb-2.5">
-                    <span className="text-xs uppercase text-slate-500 font-bold">{t.bookingId}</span>
+                    <span className="text-xs uppercase text-slate-400 font-bold">{t.bookingId}</span>
                     <span className="text-sm font-extrabold text-white font-mono uppercase">{actionData.bookingId}</span>
                   </div>
 
                   <div className="flex justify-between border-b border-slate-900 pb-2.5">
-                    <span className="text-xs uppercase text-slate-500 font-bold">{t.trackDate}</span>
+                    <span className="text-xs uppercase text-slate-400 font-bold">{t.trackDate}</span>
                     <span className="text-sm font-extrabold text-white">{date}</span>
                   </div>
 
                   <div className="flex justify-between border-b border-slate-900 pb-2.5">
-                    <span className="text-xs uppercase text-slate-500 font-bold">{locale === "en" ? "Format" : "Formato"}</span>
+                    <span className="text-xs uppercase text-slate-400 font-bold">{locale === "en" ? "Format" : "Formato"}</span>
                     <span className="text-sm font-extrabold text-white">
                       {bookingType === "CHAMPIONSHIP"
                         ? `Championship (${championshipType})`
-                        : "Standard Session Packs"}
+                        : (locale === "en" ? "Session packs" : "Turni standard")}
                     </span>
                   </div>
 
                   <div className="flex justify-between border-b border-slate-900 pb-2.5">
-                    <span className="text-xs uppercase text-slate-500 font-bold">{t.ridersAndSessions}</span>
+                    <span className="text-xs uppercase text-slate-400 font-bold">{t.ridersAndSessions}</span>
                     <span className="text-sm font-extrabold text-white">
                       {bookingType === "CHAMPIONSHIP"
-                        ? `${ridersCount} Racer(s)`
-                        : `${ridersCount} Racer(s) / ${sessionsCount} Session(s) each`}
+                        ? (locale === "en" ? `${ridersCount} riders` : `${ridersCount} piloti`)
+                        : (locale === "en" ? `${ridersCount} riders / ${sessionsCount} sessions each` : `${ridersCount} piloti / ${sessionsCount} turni ciascuno`)}
                     </span>
                   </div>
 
                   <div className="flex justify-between border-b border-slate-900 pb-2.5">
-                    <span className="text-xs uppercase text-slate-500 font-bold">{t.allocatedSlots}</span>
+                    <span className="text-xs uppercase text-slate-400 font-bold">{t.allocatedSlots}</span>
                     <span className="text-sm font-extrabold text-orange-400 font-mono">{selectedHours.join(", ")}</span>
                   </div>
 
                   {/* Allocated bikes list */}
                   <div className="pt-2">
-                    <span className="block text-xs uppercase text-slate-500 font-bold mb-2">{t.bikesSelected}</span>
+                    <span className="block text-xs uppercase text-slate-400 font-bold mb-2">{t.bikesSelected}</span>
                     <div className="space-y-2">
                       {bikesAssignment.map((assign, index) => {
                         const model = uniqueBikeModels.find(m => m.id === assign.modelId);
                         return (
                           <div key={index} className="flex justify-between items-center text-xs bg-slate-950 p-2.5 rounded-lg border border-slate-900">
                             <span className="font-semibold text-slate-300 flex items-center flex-wrap gap-1.5">
-                               <span>{pilots[index]?.name || `Rider #${index + 1}`}: {model?.name}</span>
+                               <span>{pilots[index]?.name || (locale === "en" ? `Rider ${index + 1}` : `Pilota ${index + 1}`)}: {model?.name}</span>
                             </span>
                             <div className="flex items-center gap-1.5 shrink-0">
                               {assign.insuranceSelected ? (
-                                <span className="text-[10px] bg-green-500/10 border border-green-500/20 text-green-400 font-bold uppercase px-2 py-0.5 rounded">
+                                <span className="text-xs bg-green-500/10 border border-green-500/20 text-green-400 font-bold uppercase px-2 py-0.5 rounded">
                                   {t.insuranceAdded}
                                 </span>
                               ) : (
-                                <span className="text-[10px] text-slate-500 uppercase">{t.noCover}</span>
+                                <span className="text-xs text-slate-400 uppercase">{t.noCover}</span>
                               )}
                               {assign.apparelSelected && (
-                                <span className="text-[10px] bg-blue-500/10 border border-blue-500/20 text-blue-400 font-bold uppercase px-2 py-0.5 rounded">
+                                <span className="text-xs bg-blue-500/10 border border-blue-500/20 text-blue-400 font-bold uppercase px-2 py-0.5 rounded">
                                   {locale === "en" ? "Apparel" : "Abbigliamento"}
                                 </span>
                               )}
@@ -1097,15 +1141,15 @@ export default function Book() {
                {/* Total Paid block */}
               <div className="bg-slate-950 p-5 rounded-2xl border border-slate-850 flex justify-between items-center">
                 <div>
-                  <span className="block text-xs uppercase text-slate-500 font-bold">{t.grandTotalPaid}</span>
-                  <span className="text-[10px] text-slate-400 uppercase">{t.vatInclusive}</span>
+                  <span className="block text-xs uppercase text-slate-400 font-bold">{t.grandTotalPaid}</span>
+                  <span className="text-xs text-slate-400 uppercase">{t.vatInclusive}</span>
                 </div>
                 <span className="text-3xl font-black text-green-400">€{actionData.totalPrice?.toFixed(2)}</span>
               </div>
 
               {/* QR Code and Pass Navigation Details */}
               <div className="bg-slate-950 p-6 rounded-2xl border border-slate-850 flex flex-col items-center text-center space-y-3">
-                <span className="block text-[10px] text-slate-500 uppercase tracking-widest font-black font-mono">
+                <span className="block text-xs text-slate-400 uppercase tracking-wider font-black font-mono">
                   {locale === "en" ? "Scan to view dynamic Paddock Pass" : "Scansiona per il Pass Paddock dinamico"}
                 </span>
                 <div className="bg-white p-2.5 rounded-xl inline-block shadow-lg">
@@ -1115,7 +1159,7 @@ export default function Book() {
                     className="h-32 w-32 object-contain"
                   />
                 </div>
-                <span className="text-[9px] text-slate-400 font-mono tracking-normal leading-relaxed break-all select-all">
+                <span className="text-xs text-slate-400 font-mono tracking-normal leading-relaxed break-all select-all">
                   {orderUrl}
                 </span>
               </div>
@@ -1174,8 +1218,8 @@ export default function Book() {
         </Link>
 
         <div className="flex items-center space-x-4">
-          <span className="text-xs uppercase text-slate-500 font-bold tracking-widest font-mono hidden sm:inline">
-            Rider: <strong className="text-white">{user?.name}</strong>
+          <span className="text-xs uppercase text-slate-400 font-bold tracking-wider font-mono hidden sm:inline">
+            {locale === "en" ? "Rider" : "Pilota"}: <strong className="text-white">{user?.name}</strong>
           </span>
         </div>
       </div>
@@ -1183,20 +1227,39 @@ export default function Book() {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 mt-12 relative z-10">
         
         {/* Wizard progress steps */}
-        <div className="mb-10 grid grid-cols-3 text-center text-[10px] sm:text-xs uppercase tracking-widest font-bold font-mono">
-          <div className={`pb-3 border-b-2 transition-all ${step >= 1 ? "border-orange-500 text-orange-500" : "border-slate-900 text-slate-600"}`}>
-            01. {locale === "en" ? "Date & Riders" : "Data e Piloti"}
-          </div>
-          <div className={`pb-3 border-b-2 transition-all ${step >= 2 ? "border-orange-500 text-orange-500" : "border-slate-900 text-slate-600"}`}>
-            02. {locale === "en" ? "Hours & Bikes" : "Orari e Moto"}
-          </div>
-          <div className={`pb-3 border-b-2 transition-all ${step >= 3 ? "border-orange-500 text-orange-500" : "border-slate-900 text-slate-600"}`}>
-            03. {locale === "en" ? "Receipt" : "Ricevuta"}
-          </div>
-        </div>
+        <nav aria-label={locale === "en" ? "Booking progress" : "Avanzamento prenotazione"} className="mb-10">
+          <ol className="grid grid-cols-4 text-center text-xs sm:text-sm font-semibold">
+            {[
+              locale === "en" ? "Format" : "Formato",
+              locale === "en" ? "Crew" : "Piloti",
+              locale === "en" ? "Bikes" : "Moto",
+              locale === "en" ? "Pay" : "Ricevuta",
+            ].map((label, i) => {
+              const n = i + 1;
+              const done = n < step;
+              const current = n === step;
+              const cls = `block w-full pb-3 border-b-2 ${
+                current ? "border-orange-500 text-orange-400" : done ? "border-orange-500/50 text-slate-200" : "border-slate-800 text-slate-400"
+              }`;
+              return (
+                <li key={n} aria-current={current ? "step" : undefined}>
+                  {done ? (
+                    <button type="button" onClick={() => goToStep(n)} className={`${cls} cursor-pointer hover:text-white`}>
+                      <span className="font-mono tabular-nums">{n}</span> {label}
+                    </button>
+                  ) : (
+                    <span className={cls}>
+                      <span className="font-mono tabular-nums">{n}</span> {label}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </nav>
 
         {actionData?.error && (
-          <div className="mb-8 bg-red-950/40 border border-red-500/30 rounded-2xl p-5 flex items-start space-x-3 text-red-200">
+          <div role="alert" className="mb-8 bg-red-950 border border-red-400/50 rounded-2xl p-5 flex items-start space-x-3 text-red-100">
             <AlertTriangle className="h-5.5 w-5.5 text-red-500 shrink-0 mt-0.5" />
             <p className="text-sm">{actionData.error}</p>
           </div>
@@ -1211,10 +1274,78 @@ export default function Book() {
           const maxRiders = bookingType === "CHAMPIONSHIP" ? 10 : 5;
 
           return (
-            <div className="bg-slate-900/60 backdrop-blur border border-slate-800/80 rounded-3xl p-6 sm:p-10 shadow-2xl space-y-8 animate-fade-in">
+            <div className="bg-slate-900/60 border border-slate-800/80 rounded-3xl p-6 sm:p-10 shadow-2xl space-y-8 animate-fade-in">
               <div className="border-b border-slate-850 pb-5">
                 <h2 className="text-2xl font-extrabold uppercase text-white">{t.step1Header}</h2>
                 <p className="text-xs text-slate-400 mt-1">{t.step1Desc}</p>
+              </div>
+
+              {/* Bike model: one model per race, chosen first */}
+              <div className="space-y-3">
+                <h3 className="text-xs uppercase text-slate-300 font-bold tracking-wider">
+                  {locale === "en" ? "Choose your bike" : "Scegli la moto"}
+                </h3>
+                <p className="text-sm text-slate-300">
+                  {locale === "en"
+                    ? "Every rider in a race rides the same model. Pick the one you want to race."
+                    : "In gara tutti i piloti corrono con lo stesso modello. Scegli quello con cui vuoi correre."}
+                </p>
+                {uniqueBikeModels.length === 0 ? (
+                  <p role="alert" className="bg-red-950 border border-red-400/50 rounded-xl p-4 text-sm text-red-100">
+                    {locale === "en" ? "No bike models are open for booking right now." : "Al momento nessun modello è prenotabile."}
+                  </p>
+                ) : (
+                  <div role="radiogroup" aria-label={locale === "en" ? "Bike model" : "Modello di moto"} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {uniqueBikeModels.map((model) => {
+                      const chosen = selectedFixedModel === model.model;
+                      const free = getAvailableBikesCountForModel(model.model);
+                      const soldOut = !!date && free < 1 && !chosen;
+                      return (
+                        <button
+                          key={model.id}
+                          type="button"
+                          role="radio"
+                          aria-checked={chosen}
+                          disabled={soldOut}
+                          onClick={() => {
+                            setSelectedFixedModel(model.model);
+                            setBikesAssignment(bikesAssignment.map((ba) => ({ ...ba, modelId: model.id })));
+                          }}
+                          className={`p-4 rounded-xl border text-left cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                            chosen ? "bg-orange-600/15 border-orange-500 text-white" : "bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-600"
+                          }`}
+                        >
+                          <span
+                            className="flex h-28 items-center justify-center rounded-lg overflow-hidden mb-3"
+                            style={{ backgroundColor: model.bgColor || "#1e293b" }}
+                          >
+                            {model.imageUrl ? (
+                              <img
+                                src={model.imageUrl}
+                                alt={model.name}
+                                loading="lazy"
+                                className={`h-full w-full object-contain ${soldOut ? "grayscale" : ""}`}
+                              />
+                            ) : (
+                              <Flag className="h-8 w-8 text-slate-500" aria-hidden="true" />
+                            )}
+                          </span>
+                          <span className="block font-display text-2xl uppercase leading-none">{model.model}</span>
+                          <span className="block text-xs text-slate-400 mt-2">
+                            {date
+                              ? (free > 0
+                                  ? (locale === "en" ? `${free} available on this date` : `${free} disponibili in questa data`)
+                                  : (locale === "en" ? "Sold out on this date" : "Esaurita in questa data"))
+                              : (locale === "en" ? `${model.displacement} cc` : `${model.displacement} cc`)}
+                          </span>
+                          <span className="block text-xs text-slate-300 mt-1">
+                            {locale === "en" ? "Price factor" : "Coefficiente prezzo"} x{model.priceModifier.toFixed(1)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Booking Format Selector */}
@@ -1240,7 +1371,7 @@ export default function Book() {
                     <span className="block font-black text-sm text-white mt-1">
                       {locale === "en" ? "Custom Racetrack Sessions" : "Turni Personalizzati in Pista"}
                     </span>
-                    <span className="block text-[10px] text-slate-500 mt-2 font-medium leading-normal">
+                    <span className="block text-xs text-slate-400 mt-2 font-medium leading-normal">
                       {sessionPackExplanation}
                     </span>
                   </button>
@@ -1265,91 +1396,13 @@ export default function Book() {
                     <span className="block font-black text-sm text-white mt-1">
                       {locale === "en" ? "Fixed Price Racing Packages" : "Gare a Tariffa Fissa per Gruppi"}
                     </span>
-                    <span className="block text-[10px] text-slate-500 mt-2 font-medium leading-normal">
+                    <span className="block text-xs text-slate-400 mt-2 font-medium leading-normal">
                       {locale === "en"
                         ? "GP formats (GP Sprint for 65€, GP PLUS for 85€). Bypasses bike modifiers. Minimum 5 racers required."
                         : "Formati GP (GP Sprint a 65€, GP PLUS a 85€). Esclude modificatori. Minimo 5 piloti richiesti."}
                     </span>
                   </button>
                 </div>
-              </div>
-
-              {/* Grid Selection Rules */}
-              <div className="space-y-3 pt-6 border-t border-slate-850">
-                <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider">
-                  {locale === "en" ? "Grid Selection Rules" : "Regole Griglia di Partenza"}
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <button
-                    type="button"
-                    onClick={() => setBikeSelectionMode("MIXED")}
-                    className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
-                      bikeSelectionMode === "MIXED"
-                        ? "bg-slate-950 border-orange-500/60 text-white"
-                        : "bg-slate-950/40 hover:bg-slate-950/80 border-slate-900 text-slate-500"
-                    }`}
-                  >
-                    <span className="block font-bold text-xs uppercase">
-                      {locale === "en" ? "Mixed Model Grid" : "Griglia Mista"}
-                    </span>
-                    <span className="block text-[10px] text-slate-500 mt-1">
-                      {locale === "en" ? "Mix & match any available Ohvale model." : "Qualsiasi modello Ohvale disponibile è ammesso."}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setBikeSelectionMode("FIXED")}
-                    className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
-                      bikeSelectionMode === "FIXED"
-                        ? "bg-slate-950 border-orange-500/60 text-white"
-                        : "bg-slate-950/40 hover:bg-slate-950/80 border-slate-900 text-slate-500"
-                    }`}
-                  >
-                    <span className="block font-bold text-xs uppercase">
-                      {locale === "en" ? "Fixed Model Grid" : "Monomarca / Griglia Fissa"}
-                    </span>
-                    <span className="block text-[10px] text-slate-500 mt-1">
-                      {locale === "en" ? "Enforce identical bike models for all racers." : "Tutti i piloti devono guidare lo stesso modello per equità."}
-                    </span>
-                  </button>
-                </div>
-
-                {bikeSelectionMode === "FIXED" && (
-                  <div className="mt-4 p-5 rounded-2xl bg-slate-950/70 border border-slate-850 space-y-3">
-                    <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider">
-                      {locale === "en" ? "Select Monomarca Bike Model" : "Seleziona Modello Monomarca"}
-                    </label>
-                    <div className="flex flex-wrap gap-2.5">
-                      {uniqueModels.map((modelName) => {
-                        const isChosen = selectedFixedModel === modelName;
-                        return (
-                          <button
-                            key={modelName}
-                            type="button"
-                            onClick={() => {
-                              setSelectedFixedModel(modelName);
-                              // Reset any existing bike assignments to avoid model conflicts
-                              setBikesAssignment(bikesAssignment.map(ba => ({ ...ba, bikeId: "" })));
-                            }}
-                            className={`px-4 py-3 rounded-xl text-xs font-black uppercase transition-all cursor-pointer border ${
-                              isChosen
-                                ? "bg-orange-600 border-transparent text-white shadow-lg shadow-orange-600/15"
-                                : "bg-slate-900 border-slate-800 text-slate-400 hover:text-white"
-                            }`}
-                          >
-                            {modelName}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <span className="block text-[10px] text-slate-500 leading-normal">
-                      {locale === "en"
-                        ? `Only Ohvale bikes of model ${selectedFixedModel} will be available for assignment in Step 2.`
-                        : `Solo le moto Ohvale modello ${selectedFixedModel} saranno disponibili nel Passaggio 2.`}
-                    </span>
-                  </div>
-                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-6 border-t border-slate-850">
@@ -1378,7 +1431,7 @@ export default function Book() {
                             }`}
                           />
                           {isDateLocked && (
-                            <span className="block text-[10px] text-orange-400 font-bold uppercase mt-1">
+                            <span className="block text-xs text-orange-400 font-bold uppercase mt-1">
                               * {locale === "en" ? "Date locked to Scheduled Event date" : "Data bloccata alla data dell'evento programmato"}
                             </span>
                           )}
@@ -1406,11 +1459,11 @@ export default function Book() {
                           {currentPriceDetails.dayConfig?.maxCapacityPerSlot !== undefined && (
                             <div className="flex justify-between items-center text-slate-400">
                               <span>{t.trackCapacityLabel}:</span>
-                              <span className="font-bold text-white">{currentPriceDetails.dayConfig.maxCapacityPerSlot} spots</span>
+                              <span className="font-bold text-white">{currentPriceDetails.dayConfig.maxCapacityPerSlot} {locale === "en" ? "spots" : "posti"}</span>
                             </div>
                           )}
                           {currentPriceDetails.dayConfig?.notes && (
-                            <p className="text-[11px] text-orange-400 font-semibold italic border-t border-slate-900 pt-2">
+                            <p className="text-xs text-orange-400 font-semibold italic border-t border-slate-900 pt-2">
                               * {currentPriceDetails.dayConfig.notes}
                             </p>
                           )}
@@ -1427,7 +1480,7 @@ export default function Book() {
                   <div>
                     <div className="flex justify-between items-center mb-2">
                       <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider">{t.crewSizeLabel}</label>
-                      <span className="text-[10px] text-slate-500 uppercase font-mono">
+                      <span className="text-xs text-slate-400 uppercase font-mono">
                         {bookingType === "CHAMPIONSHIP"
                           ? (locale === "en" ? "Min. 5 / Max 10 racers" : "Min. 5 / Max 10 piloti")
                           : t.maxReservationHint}
@@ -1451,7 +1504,7 @@ export default function Book() {
                       </button>
                     </div>
                     {bookingType === "CHAMPIONSHIP" && ridersCount === 5 && (
-                      <span className="block text-[10px] text-orange-500 font-bold uppercase mt-1.5 font-mono">
+                      <span className="block text-xs text-orange-500 font-bold uppercase mt-1.5 font-mono">
                         {locale === "en" ? "* Minimum grid requirement satisfied (5 racers)" : "* Requisito minimo griglia soddisfatto (5 piloti)"}
                       </span>
                     )}
@@ -1490,11 +1543,11 @@ export default function Book() {
                                 <span className="font-extrabold text-xs uppercase">{champ.name}</span>
                                 <span className="font-mono font-black text-xs text-orange-500">€{champ.price.toFixed(0)} {locale === "en" ? "/ racer" : "/ pilota"}</span>
                               </div>
-                              <span className="block text-[10px] text-slate-500 mt-1 leading-normal">
+                              <span className="block text-xs text-slate-400 mt-1 leading-normal">
                                 {champ.description}
                               </span>
                               {champ.fixedDate && (
-                                <span className="block text-[9px] text-orange-400 font-bold uppercase mt-1 font-mono">
+                                <span className="block text-xs text-orange-400 font-bold uppercase mt-1 font-mono">
                                   {locale === "en" ? `📅 Fixed Event Date: ${champ.fixedDate}` : `📅 Data Evento Fissa: ${champ.fixedDate}`}
                                 </span>
                               )}
@@ -1508,7 +1561,7 @@ export default function Book() {
                     <div>
                       <div className="flex justify-between items-center mb-2">
                         <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider">{t.sessionsPerRider}</label>
-                        <span className="text-[10px] text-slate-500 uppercase font-mono">{t.sessionsLimitHint}</span>
+                        <span className="text-xs text-slate-400 uppercase font-mono">{t.sessionsLimitHint}</span>
                       </div>
                       <div className="flex items-center space-x-4 bg-slate-950/80 border border-slate-800 rounded-xl p-1 w-fit mb-3">
                         <button
@@ -1527,7 +1580,7 @@ export default function Book() {
                           +
                         </button>
                       </div>
-                      <div className="bg-slate-950/50 border border-slate-900 rounded-xl p-3.5 text-[10px] text-slate-500 leading-relaxed">
+                      <div className="bg-slate-950/50 border border-slate-900 rounded-xl p-3.5 text-xs text-slate-400 leading-relaxed">
                         <span className="block font-bold text-orange-500 uppercase mb-1 font-mono">
                           {locale === "en" ? "💡 Sessions Pack Rates:" : "💡 Tariffe Pacchetti Turni:"}
                         </span>
@@ -1540,88 +1593,6 @@ export default function Book() {
 
                 </div>
 
-              </div>
-
-              {/* Pilot Details Form Section */}
-              <div className="space-y-4 border-t border-slate-900 pt-6 mt-8">
-                <div>
-                  <h3 className="text-sm font-black uppercase tracking-wider text-white">
-                    {locale === "en" ? "Crew Registration Details" : "Dettagli Registrazione Equipaggio"}
-                  </h3>
-                  <p className="text-[10px] text-slate-500 uppercase mt-0.5 font-mono">
-                    {locale === "en" ? "First pilot is the booking creator. Other pilots can be custom entered." : "Il primo pilota è l'intestatario dell'ordine. Gli altri possono essere inseriti custom."}
-                  </p>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {pilots.map((pilot, idx) => {
-                    const isCreator = idx === 0;
-                    return (
-                      <div key={idx} className="bg-slate-900/40 p-5 rounded-2xl border border-slate-850 space-y-3.5 relative overflow-hidden">
-                        {isCreator && (
-                          <div className="absolute top-0 right-0 bg-orange-600/10 border-l border-b border-orange-500/20 text-orange-500 text-[8px] font-black uppercase px-2.5 py-1 rounded-bl">
-                            {locale === "en" ? "Order Owner" : "Intestatario"}
-                          </div>
-                        )}
-                        <div className="flex items-center space-x-2">
-                          <div className="bg-slate-950 h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-mono font-black text-orange-500 border border-slate-800">
-                            {idx + 1}
-                          </div>
-                          <span className="text-xs font-black text-white uppercase">
-                            {locale === "en" ? `Pilot #${idx + 1}` : `Pilota #${idx + 1}`}
-                          </span>
-                        </div>
-                        <div className="space-y-3">
-                          <div>
-                            <label className="block text-[9px] uppercase text-slate-500 font-bold tracking-wider mb-1">
-                              {locale === "en" ? "Full Name" : "Nome Completo"}
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              disabled={isCreator}
-                              value={pilot.name}
-                              onChange={(e) => {
-                                const updated = [...pilots];
-                                updated[idx].name = e.target.value;
-                                setPilots(updated);
-                              }}
-                              placeholder={locale === "en" ? "Racer Name" : "Nome Pilota"}
-                              className={`w-full bg-slate-950/80 border border-slate-800 focus:border-orange-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none transition-all ${
-                                isCreator ? "opacity-60 cursor-not-allowed bg-slate-900/60" : ""
-                              }`}
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[9px] uppercase text-slate-500 font-bold tracking-wider mb-1">
-                              {locale === "en" ? "Email Address (Optional)" : "Indirizzo Email (Opzionale)"}
-                            </label>
-                            <input
-                              type="email"
-                              disabled={isCreator}
-                              value={pilot.email}
-                              onChange={(e) => {
-                                const updated = [...pilots];
-                                updated[idx].email = e.target.value;
-                                setPilots(updated);
-                              }}
-                              placeholder={locale === "en" ? "racer@example.com (links to account)" : "racer@example.com (collega account)"}
-                              className={`w-full bg-slate-950/80 border border-slate-800 focus:border-orange-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none transition-all ${
-                                isCreator ? "opacity-60 cursor-not-allowed bg-slate-900/60" : ""
-                              }`}
-                            />
-                            {!isCreator && (
-                              <span className="block text-[8px] text-slate-500 font-medium leading-normal mt-1">
-                                {locale === "en" 
-                                  ? "💡 If they are a registered user, this order will appear in their dashboard."
-                                  : "💡 Se l'utente è registrato, questo ordine apparirà nella sua area personale."}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
               </div>
 
               {date && !isEnoughBikes && (
@@ -1644,12 +1615,18 @@ export default function Book() {
                 </div>
               )}
 
+              {stepError && (
+                <div role="alert" className="bg-red-950 border border-red-400/50 rounded-xl p-4 flex items-start gap-3 text-red-100 text-sm">
+                  <AlertTriangle className="h-5 w-5 text-red-300 shrink-0" aria-hidden="true" />
+                  <p>{stepError}</p>
+                </div>
+              )}
+
               {/* Next buttons */}
               <div className="pt-8 border-t border-slate-850 flex justify-end">
                 <button
                   type="button"
                   onClick={handleNextStep}
-                  disabled={!date || (currentPriceDetails?.dayConfig && !currentPriceDetails.dayConfig.isAvailable) || !isEnoughBikes}
                   className="flex items-center space-x-2 bg-orange-600 text-white font-extrabold uppercase tracking-wider text-xs px-8 py-4.5 rounded-xl hover:bg-orange-500 shadow-xl shadow-orange-600/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-[0.98] cursor-pointer"
                 >
                   <span>{t.buttonNextStep2}</span>
@@ -1661,9 +1638,120 @@ export default function Book() {
           );
         })()}
 
-        {/* STEP 2: Time Slots and Bikes Assignment */}
+        {/* STEP 2: Crew registration */}
         {step === 2 && (
-          <div className="bg-slate-900/60 backdrop-blur border border-slate-800/80 rounded-3xl p-6 sm:p-10 shadow-2xl space-y-8 animate-fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-10 shadow-2xl space-y-8 animate-fade-in">
+            <div className="border-b border-slate-800 pb-5">
+              <h2 className="font-display text-3xl uppercase text-white">{locale === "en" ? "Who is riding?" : "Chi scende in pista?"}</h2>
+              <p className="text-sm text-slate-300 mt-1">
+                {locale === "en"
+                  ? "The first pilot is the booking owner. Add an email for the others and the booking shows up in their dashboard."
+                  : "Il primo pilota è l'intestatario dell'ordine. Aggiungi l'email degli altri e la prenotazione comparirà nella loro area personale."}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {pilots.map((pilot, idx) => {
+                const isCreator = idx === 0;
+                const nameInvalid = showNameErrors && !pilot.name.trim();
+                return (
+                  <fieldset key={idx} className="bg-slate-950 p-5 rounded-xl border border-slate-800 space-y-4">
+                    <legend className="px-2 text-sm font-bold text-white flex items-center gap-2">
+                      <span className="font-mono text-orange-400 tabular-nums">{String(idx + 1).padStart(2, "0")}</span>
+                      {locale === "en" ? `Pilot ${idx + 1}` : `Pilota ${idx + 1}`}
+                      {isCreator && (
+                        <span className="text-xs font-semibold text-orange-300 border border-orange-500/40 rounded px-1.5 py-0.5">
+                          {locale === "en" ? "Order owner" : "Intestatario"}
+                        </span>
+                      )}
+                    </legend>
+                    <div>
+                      <label htmlFor={`pilot-name-${idx}`} className="block text-xs text-slate-300 font-semibold mb-1.5">
+                        {locale === "en" ? "Full name" : "Nome completo"}
+                      </label>
+                      <input
+                        id={`pilot-name-${idx}`}
+                        type="text"
+                        required
+                        disabled={isCreator}
+                        value={pilot.name}
+                        aria-invalid={nameInvalid || undefined}
+                        aria-describedby={nameInvalid ? `pilot-name-${idx}-error` : undefined}
+                        onChange={(e) => {
+                          const updated = [...pilots];
+                          updated[idx] = { ...updated[idx], name: e.target.value };
+                          setPilots(updated);
+                        }}
+                        placeholder={locale === "en" ? "Racer name" : "Nome pilota"}
+                        className={`w-full bg-slate-900 border rounded-lg px-3 py-3 text-sm text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-400 ${
+                          nameInvalid ? "border-red-400" : "border-slate-700"
+                        } ${isCreator ? "opacity-60 cursor-not-allowed" : ""}`}
+                      />
+                      {nameInvalid && (
+                        <p id={`pilot-name-${idx}-error`} className="text-xs text-red-300 mt-1.5">
+                          {locale === "en" ? "Enter this pilot's name." : "Inserisci il nome di questo pilota."}
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <label htmlFor={`pilot-email-${idx}`} className="block text-xs text-slate-300 font-semibold mb-1.5">
+                        {locale === "en" ? "Email (optional)" : "Email (facoltativa)"}
+                      </label>
+                      <input
+                        id={`pilot-email-${idx}`}
+                        type="email"
+                        disabled={isCreator}
+                        value={pilot.email}
+                        onChange={(e) => {
+                          const updated = [...pilots];
+                          updated[idx] = { ...updated[idx], email: e.target.value };
+                          setPilots(updated);
+                        }}
+                        placeholder="nome@esempio.it"
+                        className={`w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-3 text-sm text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-400 ${
+                          isCreator ? "opacity-60 cursor-not-allowed" : ""
+                        }`}
+                      />
+                      {!isCreator && (
+                        <p className="text-xs text-slate-400 mt-1.5">
+                          {locale === "en"
+                            ? "If they have an account, the order appears in their dashboard."
+                            : "Se ha un account, l'ordine apparirà nella sua area personale."}
+                        </p>
+                      )}
+                    </div>
+                  </fieldset>
+                );
+              })}
+            </div>
+
+            {stepError && (
+              <div role="alert" className="bg-red-950 border border-red-400/50 rounded-xl p-4 flex items-start gap-3 text-red-100 text-sm">
+                <AlertTriangle className="h-5 w-5 text-red-300 shrink-0" aria-hidden="true" />
+                <p>{stepError}</p>
+              </div>
+            )}
+
+            <div className="pt-8 border-t border-slate-800 flex justify-between items-center">
+              <button type="button" onClick={() => goToStep(1)} className="flex items-center gap-1.5 text-sm text-slate-300 hover:text-white font-semibold cursor-pointer">
+                <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                <span>{locale === "en" ? "Back" : "Indietro"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleNextStep}
+                className="flex items-center gap-2 bg-orange-600 text-white font-bold text-sm px-8 py-4 rounded-xl hover:bg-orange-500 cursor-pointer"
+              >
+                <span>{t.buttonNextStep2}</span>
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 3: Time Slots and Bikes Assignment */}
+        {step === 3 && (
+          <div className="bg-slate-900/60 border border-slate-800/80 rounded-3xl p-6 sm:p-10 shadow-2xl space-y-8 animate-fade-in">
             <div className="border-b border-slate-850 pb-5">
               <h2 className="text-2xl font-extrabold uppercase text-white">{t.step2Header}</h2>
               <p className="text-xs text-slate-400 mt-1">{t.step2Desc}</p>
@@ -1677,9 +1765,9 @@ export default function Book() {
                   </div>
                   <div>
                     <span className="block text-xs font-black uppercase text-white">
-                      {locale === "en" ? "Fixed Model Grid Rules Active" : "Regole Griglia Monomarca Attive"}
+                      {locale === "en" ? "One model per race" : "Un solo modello per gara"}
                     </span>
-                    <span className="block text-[10px] text-slate-400 mt-0.5">
+                    <span className="block text-xs text-slate-400 mt-0.5">
                       {locale === "en" 
                         ? `All riders are restricted to compete on the selected model: ${selectedFixedModel}`
                         : `Tutti i piloti sono tenuti a gareggiare sul modello selezionato: ${selectedFixedModel}`}
@@ -1714,12 +1802,12 @@ export default function Book() {
                       }`}
                     >
                       <span className="block font-mono font-extrabold text-base">{slot.time}</span>
-                      <span className="block text-[10px] text-slate-500 uppercase mt-0.5">
+                      <span className="block text-xs text-slate-400 uppercase mt-0.5">
                         {isReserved ? (locale === "en" ? "Reserved — race day" : "Riservato — gara") : slot.label}
                       </span>
                       
                       {/* Spots Badge */}
-                      <span className={`absolute bottom-2.5 right-3 text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded ${
+                      <span className={`block w-fit mt-2 text-xs font-extrabold uppercase px-1.5 py-0.5 rounded ${
                         isFull 
                           ? "bg-red-950/60 text-red-400 border border-red-500/10" 
                           : "bg-slate-900 text-slate-400 border border-slate-800"
@@ -1756,7 +1844,7 @@ export default function Book() {
                           {/* Skill group: decides which heat this rider races in */}
                           {bookingType === "CHAMPIONSHIP" && activeGroups.length > 0 && (
                             <div className="space-y-2">
-                              <label className="block text-[10px] uppercase text-slate-400 font-bold tracking-wider">
+                              <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider">
                                 {locale === "en" ? "Experience Level / Group" : "Livello di Esperienza / Gruppo"}
                               </label>
                               <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
@@ -1774,15 +1862,15 @@ export default function Book() {
                                         chosen
                                           ? "bg-orange-600/10 border-orange-500 text-white cursor-default"
                                           : full
-                                            ? "bg-slate-950/45 border-slate-900 text-slate-500 opacity-50 cursor-not-allowed"
+                                            ? "bg-slate-950/45 border-slate-900 text-slate-400 opacity-50 cursor-not-allowed"
                                             : "bg-slate-900 hover:bg-slate-850 border-slate-850 text-slate-300 cursor-pointer"
                                       }`}
                                     >
-                                      <span className="block font-bold text-[10px] uppercase truncate">{group.name}</span>
+                                      <span className="block font-bold text-xs uppercase truncate">{group.name}</span>
                                       {group.description && (
-                                        <span className="block text-[9px] text-slate-500 truncate mt-0.5">{group.description}</span>
+                                        <span className="block text-xs text-slate-400 truncate mt-0.5">{group.description}</span>
                                       )}
-                                      <span className="block text-[9px] text-slate-500 font-mono mt-1">
+                                      <span className="block text-xs text-slate-400 font-mono mt-1">
                                         {group.timeSlot ? `${group.timeSlot} · ` : ""}
                                         {full
                                           ? (locale === "en" ? "Full" : "Pieno")
@@ -1799,7 +1887,7 @@ export default function Book() {
                           {bikeSelectionMode === "FIXED" ? (
                             <div className="p-4 rounded-xl border border-slate-800 bg-slate-900 flex items-center space-x-3 text-xs uppercase text-white font-black">
                               <span>{selectedFixedModel}</span>
-                              <span className="text-[9px] text-slate-500 font-medium">({locale === "en" ? "Fixed Monomarca Grid" : "Griglia Monomarca Fissa"})</span>
+                              <span className="text-xs text-slate-400 font-medium">({locale === "en" ? "same model for every rider" : "stesso modello per tutti i piloti"})</span>
                             </div>
                           ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1824,7 +1912,7 @@ export default function Book() {
                                       isSelected
                                         ? "bg-orange-600/10 border-orange-500 text-white cursor-default"
                                         : isDisabled
-                                          ? "bg-slate-950/45 border-slate-900 text-slate-500 opacity-50 cursor-not-allowed select-none"
+                                          ? "bg-slate-950/45 border-slate-900 text-slate-400 opacity-50 cursor-not-allowed select-none"
                                           : "bg-slate-900 hover:bg-slate-850 border-slate-850 text-slate-300 cursor-pointer"
                                     }`}
                                   >
@@ -1847,14 +1935,14 @@ export default function Book() {
                                       )}
                                       <div className="min-w-0">
                                         <span className="block font-bold text-xs uppercase truncate">{model.name}</span>
-                                        <span className="block text-[9px] text-slate-500 font-medium uppercase mt-0.5">
+                                        <span className="block text-xs text-slate-400 font-medium uppercase mt-0.5">
                                           {locale === "en" ? `Available: ${remainingCount}` : `Disponibili: ${remainingCount}`}
                                         </span>
                                       </div>
                                     </div>
-                                    <div className="mt-2.5 flex justify-between items-center text-[10px] border-t border-slate-950 pt-2.5 text-slate-400">
-                                      <span>{locale === "en" ? "Modifier: " : "Modificatore: "}<strong className="text-white">x{model.priceModifier.toFixed(1)}</strong></span>
-                                      <span>Ins: <strong className="text-orange-500">€{model.insurancePrice.toFixed(0)}</strong></span>
+                                    <div className="mt-2.5 flex flex-wrap justify-between items-center gap-x-4 gap-y-1 text-xs border-t border-slate-950 pt-2.5 text-slate-400">
+                                      <span>{locale === "en" ? "Price factor: " : "Coefficiente prezzo: "}<strong className="text-white">x{model.priceModifier.toFixed(1)}</strong></span>
+                                      <span>{locale === "en" ? "Insurance" : "Assicurazione"}: <strong className="text-orange-500">€{model.insurancePrice.toFixed(0)}</strong></span>
                                     </div>
                                   </button>
                                 );
@@ -1880,7 +1968,7 @@ export default function Book() {
                                       <ShieldCheck className="h-4 w-4 text-green-500" />
                                       <span>{pilots[index]?.name || `${t.riderConfigLabel} #${index + 1}`} - {t.crashProtectionLabel}</span>
                                     </span>
-                                    <span className="block text-[10px] text-slate-400 leading-normal">
+                                    <span className="block text-xs text-slate-400 leading-normal">
                                       {locale === "en" 
                                         ? `Premium crash cover is €${model.insurancePrice.toFixed(0)} and guarantees protection up to €${model.insuranceCoverage.toFixed(0)} of bike damage in track crashes!`
                                         : `La copertura premium costa €${model.insurancePrice.toFixed(0)} e garantisce protezione fino a €${model.insuranceCoverage.toFixed(0)} sui danni alla moto!`
@@ -1891,7 +1979,7 @@ export default function Book() {
                                   <button
                                     type="button"
                                     onClick={() => handleToggleInsurance(index)}
-                                    className={`text-[10px] font-extrabold uppercase px-4 py-2.5 rounded-lg border transition-all shrink-0 w-full sm:w-auto text-center cursor-pointer ${
+                                    className={`text-xs font-extrabold uppercase px-4 py-2.5 rounded-lg border transition-all shrink-0 w-full sm:w-auto text-center cursor-pointer ${
                                       assignment.insuranceSelected
                                         ? "bg-green-600 border-transparent text-white shadow-lg shadow-green-600/10"
                                         : "bg-slate-950 hover:bg-slate-900 border-slate-800 text-slate-400 hover:text-white"
@@ -1912,7 +2000,7 @@ export default function Book() {
                                       <Users className="h-4.5 w-4.5 text-green-500" />
                                       <span>{locale === "en" ? `${pilots[index]?.name || `Rider #${index + 1}`} Technical Apparel Renting` : `Noleggio Abbigliamento Tecnico ${pilots[index]?.name || `Pilota #${index + 1}`}`}</span>
                                     </span>
-                                    <span className="block text-[10px] text-slate-400 leading-normal">
+                                    <span className="block text-xs text-slate-400 leading-normal">
                                       {locale === "en"
                                         ? "Rent professional race suit, helmet, boots, and gloves for track safety."
                                         : "Noleggia tuta professionale in pelle, casco, stivali e guanti per sicurezza in pista."}
@@ -1922,7 +2010,7 @@ export default function Book() {
                                   <button
                                     type="button"
                                     onClick={() => handleToggleApparel(index)}
-                                    className={`text-[10px] font-extrabold uppercase px-4 py-2.5 rounded-lg border transition-all shrink-0 w-full sm:w-auto text-center cursor-pointer ${
+                                    className={`text-xs font-extrabold uppercase px-4 py-2.5 rounded-lg border transition-all shrink-0 w-full sm:w-auto text-center cursor-pointer ${
                                       assignment.apparelSelected
                                         ? "bg-green-600 border-transparent text-white shadow-lg shadow-green-600/10"
                                         : "bg-slate-950 hover:bg-slate-900 border-slate-800 text-slate-400 hover:text-white"
@@ -1945,11 +2033,18 @@ export default function Book() {
               })()}
             </div>
 
+            {stepError && (
+              <div role="alert" className="bg-red-950 border border-red-400/50 rounded-xl p-4 flex items-start gap-3 text-red-100 text-sm">
+                <AlertTriangle className="h-5 w-5 text-red-300 shrink-0" aria-hidden="true" />
+                <p>{stepError}</p>
+              </div>
+            )}
+
             {/* Back & Next Actions */}
             <div className="pt-8 border-t border-slate-850 flex justify-between items-center">
               <button
                 type="button"
-                onClick={() => setStep(1)}
+                onClick={() => goToStep(2)}
                 className="flex items-center space-x-1.5 text-xs text-slate-400 hover:text-white uppercase font-bold transition-colors cursor-pointer"
               >
                 <ArrowLeft className="h-4.5 w-4.5" />
@@ -1959,7 +2054,6 @@ export default function Book() {
               <button
                 type="button"
                 onClick={handleNextStep}
-                disabled={selectedHours.length === 0 || bikesAssignment.some(ba => !ba.modelId) || !allRidersHaveGroup}
                 className="flex items-center space-x-2 bg-orange-600 text-white font-extrabold uppercase tracking-wider text-xs px-8 py-4.5 rounded-xl hover:bg-orange-500 shadow-xl shadow-orange-600/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-[0.98] cursor-pointer"
               >
                 <span>{t.buttonNextStep3}</span>
@@ -1970,9 +2064,9 @@ export default function Book() {
           </div>
         )}
 
-        {/* STEP 3: Booking Checkout Summary & Confirmation submission */}
-        {step === 3 && currentPriceDetails && (
-          <div className="bg-slate-900/60 backdrop-blur border border-slate-800/80 rounded-3xl p-6 sm:p-10 shadow-2xl space-y-8 animate-fade-in">
+        {/* STEP 4: Booking Checkout Summary & Confirmation submission */}
+        {step === 4 && currentPriceDetails && (
+          <div className="bg-slate-900/60 border border-slate-800/80 rounded-3xl p-6 sm:p-10 shadow-2xl space-y-8 animate-fade-in">
             <div className="border-b border-slate-850 pb-5">
               <h2 className="text-2xl font-extrabold uppercase text-white">{t.step3Header}</h2>
               <p className="text-xs text-slate-400 mt-1">{t.step3Desc}</p>
@@ -1989,35 +2083,35 @@ export default function Book() {
                   
                   <div className="grid grid-cols-2 gap-y-4 gap-x-2 text-xs">
                     <div>
-                      <span className="block text-slate-500 uppercase tracking-widest text-[9px]">{t.paddockDate}</span>
+                      <span className="block text-slate-400 uppercase tracking-wider text-xs">{t.paddockDate}</span>
                       <span className="text-sm font-extrabold text-white mt-0.5 block">{date}</span>
                     </div>
                     <div>
-                      <span className="block text-slate-500 uppercase tracking-widest text-[9px]">{t.riderCount}</span>
-                      <span className="text-sm font-extrabold text-white mt-0.5 block">{ridersCount} Racer(s)</span>
+                      <span className="block text-slate-400 uppercase tracking-wider text-xs">{t.riderCount}</span>
+                      <span className="text-sm font-extrabold text-white mt-0.5 block">{locale === "en" ? `${ridersCount} ${ridersCount === 1 ? "rider" : "riders"}` : `${ridersCount} ${ridersCount === 1 ? "pilota" : "piloti"}`}</span>
                     </div>
                     <div>
-                      <span className="block text-slate-500 uppercase tracking-widest text-[9px]">{locale === "en" ? "Format" : "Formato"}</span>
+                      <span className="block text-slate-400 uppercase tracking-wider text-xs">{locale === "en" ? "Format" : "Formato"}</span>
                       <span className="text-sm font-extrabold text-white mt-0.5 block">
                         {bookingType === "CHAMPIONSHIP"
                           ? `Championship (${championshipType})`
-                          : "Standard Session Packs"}
+                          : (locale === "en" ? "Session packs" : "Turni standard")}
                       </span>
                     </div>
                     <div>
-                      <span className="block text-slate-500 uppercase tracking-widest text-[9px]">{locale === "en" ? "Grid Mode" : "Regola Griglia"}</span>
+                      <span className="block text-slate-400 uppercase tracking-wider text-xs">{locale === "en" ? "Grid Mode" : "Regola Griglia"}</span>
                       <span className="text-sm font-extrabold text-white mt-0.5 block">
-                        {bikeSelectionMode === "FIXED" ? (locale === "en" ? "Fixed Model Grid" : "Monomarca") : (locale === "en" ? "Mixed Model Grid" : "Griglia Mista")}
+                        {bikeSelectionMode === "FIXED" ? (locale === "en" ? "Single model" : "Modello unico") : (locale === "en" ? "Mixed Model Grid" : "Griglia Mista")}
                       </span>
                     </div>
                     <div className="col-span-2 border-t border-slate-900 pt-3">
-                      <span className="block text-slate-500 uppercase tracking-widest text-[9px]">{t.operatingHours}</span>
+                      <span className="block text-slate-400 uppercase tracking-wider text-xs">{t.operatingHours}</span>
                       <span className="text-sm font-extrabold text-orange-400 mt-0.5 block font-mono">{selectedHours.join(", ")}</span>
                     </div>
                     {bookingType === "STANDARD" && (
                       <div className="col-span-2 border-t border-slate-900 pt-3">
-                        <span className="block text-slate-500 uppercase tracking-widest text-[9px]">{t.trackSessions}</span>
-                        <span className="text-sm font-extrabold text-white mt-0.5 block">{sessionsCount} Session(s)</span>
+                        <span className="block text-slate-400 uppercase tracking-wider text-xs">{t.trackSessions}</span>
+                        <span className="text-sm font-extrabold text-white mt-0.5 block">{locale === "en" ? `${sessionsCount} ${sessionsCount === 1 ? "session" : "sessions"}` : `${sessionsCount} ${sessionsCount === 1 ? "turno" : "turni"}`}</span>
                       </div>
                     )}
                   </div>
@@ -2034,26 +2128,26 @@ export default function Book() {
                       <div key={index} className="flex justify-between items-center text-xs p-3.5 bg-slate-900 border border-slate-850 rounded-xl">
                         <div>
                           <span className="block font-bold text-slate-200 uppercase flex items-center flex-wrap gap-1.5">
-                            <span>Rider #{index + 1}: {model?.name}</span>
+                            <span>{locale === "en" ? "Rider" : "Pilota"} {index + 1}: {model?.name}</span>
                           </span>
                           {bookingType === "STANDARD" && (
-                            <span className="block text-[10px] text-slate-500 mt-0.5 uppercase">Modifier: x{model?.priceModifier.toFixed(1)}</span>
+                            <span className="block text-xs text-slate-400 mt-0.5 uppercase">{locale === "en" ? "Bike price factor" : "Coefficiente moto"}: x{model?.priceModifier.toFixed(1)}</span>
                           )}
                         </div>
                         <div className="flex flex-col gap-1.5 items-end">
                           {assign.insuranceSelected ? (
-                            <span className="text-[9px] bg-green-500/10 border border-green-500/20 text-green-400 font-extrabold uppercase px-2.5 py-0.5 rounded-full">
+                            <span className="text-xs bg-green-500/10 border border-green-500/20 text-green-400 font-extrabold uppercase px-2.5 py-0.5 rounded-full">
                               {t.coverEnabled}
                             </span>
                           ) : (
-                            <span className="text-[9px] text-slate-500 uppercase font-mono">{t.noCover}</span>
+                            <span className="text-xs text-slate-400 uppercase font-mono">{t.noCover}</span>
                           )}
                           {assign.apparelSelected ? (
-                            <span className="text-[9px] bg-blue-500/10 border border-blue-500/20 text-blue-400 font-extrabold uppercase px-2.5 py-0.5 rounded-full">
+                            <span className="text-xs bg-blue-500/10 border border-blue-500/20 text-blue-400 font-extrabold uppercase px-2.5 py-0.5 rounded-full">
                               {locale === "en" ? "Apparel" : "Abbigliamento"}
                             </span>
                           ) : (
-                            <span className="text-[9px] text-slate-500 uppercase font-mono">{locale === "en" ? "No Apparel" : "No Abbigliamento"}</span>
+                            <span className="text-xs text-slate-400 uppercase font-mono">{locale === "en" ? "No Apparel" : "No Abbigliamento"}</span>
                           )}
                         </div>
                       </div>
@@ -2167,7 +2261,7 @@ export default function Book() {
                     <span className="text-xs uppercase text-slate-400 font-bold">{t.grandTotal}:</span>
                     <span className="text-2xl font-black text-white">€{totalPrice.toFixed(2)}</span>
                   </div>
-                  <span className="block text-[10px] text-slate-500 uppercase font-mono mt-0.5 leading-normal">* {t.vatInfo}</span>
+                  <span className="block text-xs text-slate-400 uppercase font-mono mt-0.5 leading-normal">* {t.vatInfo}</span>
                 </div>
 
                 {/* Confirm Form */}
@@ -2206,7 +2300,7 @@ export default function Book() {
                       </div>
                     ) : (
                       <div className="flex items-center space-x-1.5">
-                        <Sparkles className="h-4.5 w-4.5 text-white animate-pulse" />
+                        <Sparkles className="h-4.5 w-4.5 text-white" />
                         <span>{t.buttonConfirmBooking}</span>
                       </div>
                     )}
@@ -2221,7 +2315,7 @@ export default function Book() {
             <div className="pt-8 border-t border-slate-850 flex justify-between items-center">
               <button
                 type="button"
-                onClick={() => setStep(2)}
+                onClick={() => goToStep(3)}
                 disabled={isSubmitting}
                 className="flex items-center space-x-1.5 text-xs text-slate-400 hover:text-white uppercase font-bold transition-colors disabled:opacity-30 cursor-pointer"
               >
@@ -2236,7 +2330,7 @@ export default function Book() {
       </div>
 
       {/* Platform Branding Footer */}
-      <div className="max-w-7xl mx-auto text-center py-8 border-t border-slate-900/60 mt-12 text-[10px] text-slate-500 font-bold uppercase tracking-wider font-mono space-y-1">
+      <div className="max-w-7xl mx-auto text-center py-8 border-t border-slate-900/60 mt-12 text-xs text-slate-400 font-bold uppercase tracking-wider font-mono space-y-1">
         <div className="flex justify-center items-center space-x-2">
           <span>{locale === "en" ? "Software by" : "Software di"}</span>
           <a href="https://pikosoft.it" target="_blank" rel="noopener noreferrer" className="inline-flex items-center hover:opacity-80 transition-opacity">

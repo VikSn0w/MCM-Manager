@@ -30,21 +30,21 @@ export async function action({ request }: Route.ActionArgs) {
     typeof password !== "string" ||
     typeof confirmPassword !== "string"
   ) {
-    return { error: "Invalid form fields." };
+    return { error: "Campi del modulo non validi." };
   }
 
   if (password !== confirmPassword) {
-    return { error: "Passwords do not match." };
+    return { error: "Le password non coincidono." };
   }
 
   if (password.length < MIN_PASSWORD_LENGTH) {
-    return { error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.` };
+    return { error: `La password deve avere almeno ${MIN_PASSWORD_LENGTH} caratteri.` };
   }
 
   const result = await resetPasswordWithToken(token, password);
 
   if (!result.ok) {
-    return { error: "This reset link is invalid or has expired. Request a new one." };
+    return { error: "Questo link non è valido o è scaduto. Richiedine uno nuovo." };
   }
 
   // Signing in here mints a session stamped after the password change, so the
@@ -65,7 +65,6 @@ export default function ResetPassword() {
 
       {/* Background decoration */}
       <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-orange-950/20 via-slate-950 to-slate-950 pointer-events-none" />
-      <div className="absolute -top-40 -left-40 w-96 h-96 bg-orange-600/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* Carbon grid lines overlay */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] opacity-30 pointer-events-none" />
@@ -83,7 +82,7 @@ export default function ResetPassword() {
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md relative z-10 px-4 sm:px-0">
-        <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-800/80 py-8 px-6 shadow-2xl rounded-2xl sm:px-10">
+        <div className="bg-slate-900/60 border border-slate-800/80 py-8 px-6 shadow-2xl rounded-2xl sm:px-10">
 
           {!tokenValid ? (
             <div className="space-y-6 text-center">
@@ -128,7 +127,7 @@ export default function ResetPassword() {
                       className="w-full bg-slate-950/80 border border-slate-800 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 text-white rounded-xl py-3 px-4 shadow-inner placeholder-slate-600 transition-all text-sm outline-none"
                     />
                   </div>
-                  <p className="mt-2 text-xs text-slate-500">
+                  <p className="mt-2 text-xs text-slate-400">
                     {t.passwordMinHint.replace("{n}", String(MIN_PASSWORD_LENGTH))}
                   </p>
                 </div>
@@ -182,7 +181,7 @@ export default function ResetPassword() {
           )}
 
           {/* Footer badge */}
-          <div className="mt-8 pt-6 border-t border-slate-800/80 flex justify-center items-center space-x-2 text-xs text-slate-500 uppercase tracking-widest">
+          <div className="mt-8 pt-6 border-t border-slate-800/80 flex justify-center items-center space-x-2 text-xs text-slate-400 uppercase tracking-wider">
             <Flag className="h-4.5 w-4.5 text-slate-600" />
             <span>{t.fimBadge}</span>
           </div>

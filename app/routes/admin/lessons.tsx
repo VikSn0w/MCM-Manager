@@ -43,12 +43,12 @@ export async function action({ request }: Route.ActionArgs) {
   const id = formData.get("id")?.toString();
 
   if (intent === "delete") {
-    if (!id) return { error: "Missing lesson ID." };
+    if (!id) return { error: "Lezione non specificata." };
     try {
       await prisma.lesson.delete({ where: { id } });
-      return { success: "Lesson deleted successfully from the paddock system." };
+      return { success: "Lezione eliminata." };
     } catch (e: any) {
-      return { error: `Cannot delete lesson: ${e.message}` };
+      return { error: `Impossibile eliminare la lezione: ${e.message}` };
     }
   }
 
@@ -85,11 +85,11 @@ export async function action({ request }: Route.ActionArgs) {
           bikeModelId,
         },
       });
-      return { success: "Academy lesson created successfully." };
+      return { success: "Lezione Academy creata." };
     }
 
     if (intent === "update") {
-      if (!id) return { error: "Missing lesson ID for update." };
+      if (!id) return { error: "Lezione da aggiornare non specificata." };
       await prisma.lesson.update({
         where: { id },
         data: {
@@ -106,10 +106,10 @@ export async function action({ request }: Route.ActionArgs) {
           bikeModelId,
         },
       });
-      return { success: "Academy lesson updated successfully." };
+      return { success: "Lezione Academy aggiornata." };
     }
   } catch (error: any) {
-    return { error: `Failed to save lesson: ${error.message}` };
+    return { error: `Impossibile salvare la lezione: ${error.message}` };
   }
 
   return null;
@@ -147,7 +147,7 @@ export default function AdminLessons() {
       {/* Header bar */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <span className="text-xs font-bold uppercase tracking-widest text-orange-500 font-mono">
+          <span className="text-xs font-bold uppercase tracking-wider text-orange-500 font-mono">
             {locale === "en" ? "Racing Academy Manager" : "Gestione Accademia"}
           </span>
           <h1 className="text-3xl font-black uppercase text-white tracking-tight mt-1 flex items-center space-x-2">
@@ -165,7 +165,7 @@ export default function AdminLessons() {
       </div>
 
       {actionData?.error && (
-        <div className="bg-red-950/40 border border-red-500/30 rounded-2xl p-5 flex items-start space-x-3 text-red-200 text-sm max-w-4xl animate-pulse">
+        <div className="bg-red-950/40 border border-red-500/30 rounded-2xl p-5 flex items-start space-x-3 text-red-200 text-sm max-w-4xl">
           <AlertTriangle className="h-5.5 w-5.5 text-red-500 shrink-0 mt-0.5" />
           <p>{actionData.error}</p>
         </div>
@@ -182,7 +182,7 @@ export default function AdminLessons() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl">
         {lessons.length === 0 ? (
           <div className="col-span-full bg-slate-900/60 border border-slate-850 p-16 rounded-3xl text-center space-y-4 shadow-xl">
-            <BookOpen className="h-12 w-12 text-slate-700 mx-auto animate-pulse" />
+            <BookOpen className="h-12 w-12 text-slate-700 mx-auto" />
             <h3 className="text-sm font-bold text-slate-400 uppercase">
               {locale === "en" ? "No Lessons Found" : "Nessuna Lezione Trovata"}
             </h3>
@@ -205,30 +205,30 @@ export default function AdminLessons() {
                     <div>
                       <h3 className="text-lg font-black uppercase text-white leading-tight font-mono">{locale === "en" ? lesson.title : lesson.titleIt}</h3>
                       <div className="flex flex-col gap-1.5 mt-2">
-                        <div className="flex items-center space-x-1.5 text-[10px] text-slate-400 font-medium">
+                        <div className="flex items-center space-x-1.5 text-xs text-slate-400 font-medium">
                           <Clock className="h-3.5 w-3.5 text-orange-500/85 shrink-0" />
                           <span>{locale === "en" ? "Duration: " : "Durata: "}{locale === "en" ? lesson.duration : lesson.durationIt}</span>
                         </div>
-                        <div className="flex items-center space-x-1.5 text-[10px] text-slate-400 font-medium">
+                        <div className="flex items-center space-x-1.5 text-xs text-slate-400 font-medium">
                           <Calendar className="h-3.5 w-3.5 text-orange-500/85 shrink-0" />
                           <span>{locale === "en" ? "Timing: " : "Orario: "}{locale === "en" ? lesson.time : lesson.timeIt}</span>
                         </div>
-                        <div className="flex items-center space-x-1.5 text-[10px] text-slate-400 font-medium">
+                        <div className="flex items-center space-x-1.5 text-xs text-slate-400 font-medium">
                           <BookOpen className="h-3.5 w-3.5 text-orange-500/85 shrink-0" />
                           <span>
                             {locale === "en" ? "Training Bike: " : "Moto: "}
                             {lesson.bikeModel ? (
                               <span className="text-white font-bold">{lesson.bikeModel.name} ({lesson.bikeModel.displacement}cc)</span>
                             ) : (
-                              <span className="text-slate-500 italic">{locale === "en" ? "None Assigned" : "Nessuna Moto"}</span>
+                              <span className="text-slate-400 italic">{locale === "en" ? "None Assigned" : "Nessuna Moto"}</span>
                             )}
                           </span>
                         </div>
                       </div>
                     </div>
-                    <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded border ${
+                    <span className={`text-xs font-extrabold uppercase px-2 py-0.5 rounded border ${
                       isUnavail
-                        ? "bg-slate-950 text-slate-500 border-slate-900"
+                        ? "bg-slate-950 text-slate-400 border-slate-900"
                         : "bg-green-950/60 text-green-400 border-green-500/10"
                     }`}>
                       {isUnavail ? (locale === "en" ? "DISABLED" : "DISATTIVATO") : (locale === "en" ? "ACTIVE" : "ATTIVO")}
@@ -243,7 +243,7 @@ export default function AdminLessons() {
                 <div className="pt-4 border-t border-slate-850 flex flex-col gap-3.5">
                   <div className="flex items-center justify-between">
                     <div>
-                      <span className="block text-[9px] text-slate-500 uppercase tracking-widest flex items-center space-x-1">
+                      <span className="block text-xs text-slate-400 uppercase tracking-wider flex items-center space-x-1">
                         <DollarSign className="h-3.5 w-3.5" />
                         <span>{locale === "en" ? "Cost" : "Costo"}</span>
                       </span>
@@ -254,7 +254,7 @@ export default function AdminLessons() {
                     <div className="flex space-x-2.5">
                       <button
                         onClick={() => handleOpenEdit(lesson)}
-                        className="py-2.5 px-4 bg-slate-950 hover:bg-slate-850 border border-slate-850 hover:border-slate-800 text-slate-300 hover:text-white rounded-xl text-[10px] font-extrabold uppercase tracking-wider flex justify-center items-center space-x-1.5 transition-colors cursor-pointer"
+                        className="py-2.5 px-4 bg-slate-950 hover:bg-slate-850 border border-slate-850 hover:border-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-extrabold uppercase tracking-wider flex justify-center items-center space-x-1.5 transition-colors cursor-pointer"
                       >
                         <Edit3 className="h-3.5 w-3.5" />
                         <span>{locale === "en" ? "Edit" : "Modifica"}</span>
@@ -269,7 +269,7 @@ export default function AdminLessons() {
                         <input type="hidden" name="id" value={lesson.id} />
                         <button
                           type="submit"
-                          className="py-2.5 px-4 bg-red-950/20 hover:bg-red-600 border border-red-500/20 hover:border-transparent text-red-400 hover:text-white rounded-xl text-[10px] font-extrabold uppercase tracking-wider flex justify-center items-center space-x-1.5 transition-all cursor-pointer"
+                          className="py-2.5 px-4 bg-red-950/20 hover:bg-red-600 border border-red-500/20 hover:border-transparent text-red-400 hover:text-white rounded-xl text-xs font-extrabold uppercase tracking-wider flex justify-center items-center space-x-1.5 transition-all cursor-pointer"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                           <span>{locale === "en" ? "Delete" : "Elimina"}</span>
@@ -294,7 +294,7 @@ export default function AdminLessons() {
             
             <button
               onClick={handleClose}
-              className="absolute top-4 right-4 text-slate-500 hover:text-white p-1 bg-slate-950 border border-slate-880 hover:border-slate-800 rounded-lg transition-colors cursor-pointer"
+              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 bg-slate-950 border border-slate-880 hover:border-slate-800 rounded-lg transition-colors cursor-pointer"
             >
               <X className="h-4.5 w-4.5" />
             </button>
@@ -314,18 +314,18 @@ export default function AdminLessons() {
               {/* Title inputs */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="block text-[10px] uppercase text-slate-400 font-bold tracking-widest">Title (EN)</label>
+                  <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider">Titolo (EN)</label>
                   <input
                     type="text"
                     name="title"
                     required
                     defaultValue={editingLesson?.title || ""}
-                    placeholder="e.g. Basic Track Technique"
+                    placeholder="es. Tecnica base in pista"
                     className="w-full bg-slate-950/80 border border-slate-800 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 text-white rounded-xl py-3 px-4 shadow-inner outline-none text-xs font-semibold"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="block text-[10px] uppercase text-slate-400 font-bold tracking-widest">Titolo (IT)</label>
+                  <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider">Titolo (IT)</label>
                   <input
                     type="text"
                     name="titleIt"
@@ -339,7 +339,7 @@ export default function AdminLessons() {
 
               {/* Cost */}
               <div className="space-y-1.5">
-                <label className="block text-[10px] uppercase text-slate-400 font-bold tracking-widest">{locale === "en" ? "Cost per Lesson (€)" : "Costo del Corso (€)"}</label>
+                <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider">{locale === "en" ? "Cost per Lesson (€)" : "Costo del Corso (€)"}</label>
                 <input
                   type="number"
                   name="cost"
@@ -355,18 +355,18 @@ export default function AdminLessons() {
               {/* Duration inputs */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="block text-[10px] uppercase text-slate-400 font-bold tracking-widest">Duration (EN)</label>
+                  <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider">Durata (EN)</label>
                   <input
                     type="text"
                     name="duration"
                     required
                     defaultValue={editingLesson?.duration || ""}
-                    placeholder="e.g. 2 Hours"
+                    placeholder="es. 2 ore"
                     className="w-full bg-slate-950/80 border border-slate-800 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 text-white rounded-xl py-3 px-4 shadow-inner outline-none text-xs font-semibold"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="block text-[10px] uppercase text-slate-400 font-bold tracking-widest">Durata (IT)</label>
+                  <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider">Durata (IT)</label>
                   <input
                     type="text"
                     name="durationIt"
@@ -381,18 +381,18 @@ export default function AdminLessons() {
               {/* Time slots inputs */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="block text-[10px] uppercase text-slate-400 font-bold tracking-widest">Time Slots (EN)</label>
+                  <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider">Orari (EN)</label>
                   <input
                     type="text"
                     name="time"
                     required
                     defaultValue={editingLesson?.time || ""}
-                    placeholder="e.g. 09:00 - 11:00 or Custom"
+                    placeholder="es. 09:00 - 11:00 oppure su misura"
                     className="w-full bg-slate-950/80 border border-slate-800 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 text-white rounded-xl py-3 px-4 shadow-inner outline-none text-xs font-semibold"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="block text-[10px] uppercase text-slate-400 font-bold tracking-widest">Orari (IT)</label>
+                  <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider">Orari (IT)</label>
                   <input
                     type="text"
                     name="timeIt"
@@ -406,19 +406,19 @@ export default function AdminLessons() {
 
               {/* Descriptions */}
               <div className="space-y-1.5">
-                <label className="block text-[10px] uppercase text-slate-400 font-bold tracking-widest">Description (EN)</label>
+                <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider">Descrizione (EN)</label>
                 <textarea
                   name="description"
                   required
                   rows={2}
                   defaultValue={editingLesson?.description || ""}
-                  placeholder="Master corner entry speed..."
+                  placeholder="Perfeziona la velocità di inserimento in curva..."
                   className="w-full bg-slate-950/80 border border-slate-800 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 text-white rounded-xl py-3 px-4 shadow-inner outline-none text-xs font-semibold leading-normal"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-[10px] uppercase text-slate-400 font-bold tracking-widest">Descrizione (IT)</label>
+                <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider">Descrizione (IT)</label>
                 <textarea
                   name="descriptionIt"
                   required
@@ -432,7 +432,7 @@ export default function AdminLessons() {
               {/* Assigned Bike & Status */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="block text-[10px] uppercase text-slate-400 font-bold tracking-widest">{locale === "en" ? "Assigned Bike Model" : "Modello Moto Assegnata"}</label>
+                  <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider">{locale === "en" ? "Assigned Bike Model" : "Modello Moto Assegnata"}</label>
                   <select
                     name="bikeModelId"
                     defaultValue={editingLesson?.bikeModelId || ""}
@@ -441,13 +441,13 @@ export default function AdminLessons() {
                     <option value="">{locale === "en" ? "-- No Bike Model Assigned --" : "-- Nessun Modello Assegnato --"}</option>
                     {bikeModels.map((m: any) => (
                       <option key={m.id} value={m.id}>
-                        {m.name} ({m.displacement}cc) - {m.usage}
+                        {m.name} ({m.displacement}cc) - {m.usage === "ACADEMY" ? "Academy" : m.usage === "RENTAL" ? "Noleggio" : "Noleggio e Academy"}
                       </option>
                     ))}
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="block text-[10px] uppercase text-slate-400 font-bold tracking-widest">{locale === "en" ? "Academy Status" : "Stato Accademia"}</label>
+                  <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider">{locale === "en" ? "Academy Status" : "Stato Accademia"}</label>
                   <select
                     name="isAvailable"
                     defaultValue={editingLesson ? (editingLesson.isAvailable ? "true" : "false") : "true"}

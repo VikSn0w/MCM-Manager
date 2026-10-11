@@ -2,95 +2,97 @@
 
 @theme {
   --font-sans: "IBM Plex Mono", monospace;
+  --font-display: "Big Shoulders Display", "Arial Narrow", sans-serif;
   --color-orange-400: var(--color-brand-primary-light, #fb923c);
   --color-orange-500: var(--color-brand-primary, #f97316);
   --color-orange-600: var(--color-brand-primary-hover, #ea580c);
   --color-orange-800: var(--color-brand-primary-dark, #9a3412);
+
+  /* Intermediate slate steps used across the UI that Tailwind does not ship. */
+  --color-slate-350: #b1bccc;
+  --color-slate-650: #3f4d63;
+  --color-slate-850: #172033;
+  --color-slate-880: #131b2c;
+  --color-slate-885: #111827;
 }
 
 html,
 body {
   @apply bg-white dark:bg-gray-950;
   scroll-behavior: smooth;
+  font-variant-numeric: tabular-nums;
 
   @media (prefers-color-scheme: dark) {
     color-scheme: dark;
   }
 }
 
-/* Custom Keyframes & Animations */
+/* Display voice: condensed signage face for headings, plex mono for data and UI. */
+h1,
+h2 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: 0.005em;
+  text-wrap: balance;
+}
+
+/* Browser surfaces that otherwise ship with defaults */
+::selection {
+  background: var(--color-brand-primary, #f97316);
+  color: #0b0f19;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brand-primary-light, #fb923c);
+  outline-offset: 2px;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--color-brand-primary-light, #fb923c);
+  outline-offset: 2px;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}
+
+/* One authored entrance, used by the wizard steps and page hero */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes float {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-8px); }
-}
-
-@keyframes glowPulse {
-  0%, 100% { opacity: 0.85; filter: drop-shadow(0 0 2px rgba(249, 115, 22, 0.4)); }
-  50% { opacity: 1; filter: drop-shadow(0 0 10px rgba(249, 115, 22, 0.8)); }
-}
-
-@keyframes pulseSubtle {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.02); }
-}
-
-/* Animations Utility Classes */
 .animate-fade-in {
-  animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: fadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.animate-float {
-  animation: float 6s ease-in-out infinite;
-}
-
-.animate-glow-pulse {
-  animation: glowPulse 2s infinite ease-in-out;
-}
-
-.animate-pulse-subtle {
-  animation: pulseSubtle 3s infinite ease-in-out;
-}
-
-/* Staggered animation delays */
-.animation-delay-50 { animation-delay: 50ms; }
-.animation-delay-100 { animation-delay: 100ms; }
-.animation-delay-200 { animation-delay: 200ms; }
-.animation-delay-300 { animation-delay: 300ms; }
-.animation-delay-400 { animation-delay: 400ms; }
-.animation-delay-500 { animation-delay: 500ms; }
-.animation-delay-600 { animation-delay: 600ms; }
-
-/* Interactive Hover/Active states */
-.hover-glow-orange {
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.hover-glow-orange:hover {
-  border-color: var(--color-brand-primary, #f97316) !important;
-  box-shadow: 0 0 25px rgba(249, 115, 22, 0.2);
-}
-
-.hover-glow-purple {
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.hover-glow-purple:hover {
-  border-color: #a855f7 !important;
-  box-shadow: 0 0 25px rgba(168, 85, 247, 0.2);
-}
-
+/* Hover states: a border change, not a glow */
+.hover-glow-orange,
+.hover-glow-sky,
 .hover-glow-green {
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.hover-glow-green:hover {
-  border-color: #22c55e !important;
-  box-shadow: 0 0 25px rgba(34, 197, 94, 0.2);
+.hover-glow-orange:hover { border-color: var(--color-brand-primary, #f97316) !important; }
+.hover-glow-sky:hover { border-color: #38bdf8 !important; }
+.hover-glow-green:hover { border-color: #22c55e !important; }
+
+/* Interactive elements transition only what changes */
+a, button, select, input, textarea, .interactive-card, [role="button"] {
+  transition-property: color, background-color, border-color, opacity, transform;
+  transition-duration: 0.2s;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Global smooth transitions */
-a, button, select, input, textarea, .interactive-card, [role="button"] {
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -123,7 +123,7 @@ export default function AdminDashboard() {
       
       {/* Dynamic dashboard greeting */}
       <div>
-        <span className="text-xs font-bold uppercase tracking-widest text-orange-500 font-mono">
+        <span className="text-xs font-bold uppercase tracking-wider text-orange-500 font-mono">
           {locale === "en" ? "Overview Dashboard" : "Panoramica Generale"}
         </span>
         <h1 className="text-3xl font-black uppercase text-white tracking-tight mt-1">
@@ -148,7 +148,7 @@ export default function AdminDashboard() {
             </div>
             <Link
               to="/admin/bookings?status=PENDING"
-              className="mt-3 sm:mt-0 inline-flex items-center space-x-1.5 bg-amber-600 text-white font-extrabold uppercase px-4 py-2.5 rounded-xl hover:bg-amber-500 shadow-xl transition-all text-[10px] shrink-0"
+              className="mt-3 sm:mt-0 inline-flex items-center space-x-1.5 bg-amber-600 text-white font-extrabold uppercase px-4 py-2.5 rounded-xl hover:bg-amber-500 shadow-xl transition-all text-xs shrink-0"
             >
               <span>{locale === "en" ? "Review Bookings" : "Esamina Ora"}</span>
               <ArrowRight className="h-3.5 w-3.5" />
@@ -163,11 +163,11 @@ export default function AdminDashboard() {
         {/* Revenue */}
         <div className="bg-slate-900/60 border border-slate-850 p-6 rounded-2xl flex items-center justify-between shadow-xl">
           <div className="space-y-1.5">
-            <span className="block text-slate-500 uppercase tracking-wider text-[10px] font-bold">
+            <span className="block text-slate-400 uppercase tracking-wider text-xs font-bold">
               {locale === "en" ? "Paddock Revenue" : "Fatturato Paddock"}
             </span>
             <span className="block text-3xl font-black text-white">€{totalRevenue.toFixed(0)}</span>
-            <span className="block text-[10px] text-slate-400 uppercase font-mono">VAT Inclusive</span>
+            <span className="block text-xs text-slate-400 uppercase font-mono">IVA inclusa</span>
           </div>
           <div className="h-12 w-12 bg-green-500/10 border border-green-500/20 rounded-xl flex items-center justify-center text-green-400">
             <DollarSign className="h-6 w-6" />
@@ -177,11 +177,11 @@ export default function AdminDashboard() {
         {/* Bookings Count */}
         <div className="bg-slate-900/60 border border-slate-850 p-6 rounded-2xl flex items-center justify-between shadow-xl">
           <div className="space-y-1.5">
-            <span className="block text-slate-500 uppercase tracking-wider text-[10px] font-bold">
+            <span className="block text-slate-400 uppercase tracking-wider text-xs font-bold">
               {locale === "en" ? "Confirmed Sessions" : "Sessioni Confermate"}
             </span>
             <span className="block text-3xl font-black text-white">{bookingsCount}</span>
-            <span className="block text-[10px] text-slate-400 uppercase font-mono">
+            <span className="block text-xs text-slate-400 uppercase font-mono">
               {locale === "en" ? "Active bookings" : "Prenotazioni attive"}
             </span>
           </div>
@@ -193,11 +193,11 @@ export default function AdminDashboard() {
         {/* Fleet size */}
         <div className="bg-slate-900/60 border border-slate-850 p-6 rounded-2xl flex items-center justify-between shadow-xl">
           <div className="space-y-1.5">
-            <span className="block text-slate-500 uppercase tracking-wider text-[10px] font-bold">
+            <span className="block text-slate-400 uppercase tracking-wider text-xs font-bold">
               {locale === "en" ? "Ohvale Fleet size" : "Dimensione Flotta"}
             </span>
             <span className="block text-3xl font-black text-white">{bikesCount}</span>
-            <span className="block text-[10px] text-slate-400 uppercase font-mono">
+            <span className="block text-xs text-slate-400 uppercase font-mono">
               <span className="text-green-400">{availableBikes} OK</span> / <span className="text-red-400">{maintenanceBikes} {locale === "en" ? "repair" : "in riparazione"}</span>
             </span>
           </div>
@@ -209,15 +209,15 @@ export default function AdminDashboard() {
         {/* Active customers */}
         <div className="bg-slate-900/60 border border-slate-850 p-6 rounded-2xl flex items-center justify-between shadow-xl">
           <div className="space-y-1.5">
-            <span className="block text-slate-500 uppercase tracking-wider text-[10px] font-bold">
+            <span className="block text-slate-400 uppercase tracking-wider text-xs font-bold">
               {locale === "en" ? "Active Racers" : "Piloti Attivi"}
             </span>
             <span className="block text-3xl font-black text-white">{customersCount}</span>
-            <span className="block text-[10px] text-slate-400 uppercase font-mono">
+            <span className="block text-xs text-slate-400 uppercase font-mono">
               {locale === "en" ? "Registered riders" : "Piloti registrati"}
             </span>
           </div>
-          <div className="h-12 w-12 bg-purple-500/10 border border-purple-500/20 rounded-xl flex items-center justify-center text-purple-400">
+          <div className="h-12 w-12 bg-sky-500/10 border border-sky-500/20 rounded-xl flex items-center justify-center text-sky-400">
             <Users className="h-6 w-6" />
           </div>
         </div>
@@ -234,7 +234,7 @@ export default function AdminDashboard() {
               <h3 className="text-base font-extrabold uppercase text-white">
                 {locale === "en" ? "Revenue Stream per Weekday" : "Fatturato Turni per Giorno"}
               </h3>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-xs text-slate-400">
                 {locale === "en" ? "Aesthetic SVG aggregate tracking of bookings & revenue distributions" : "Statistiche grafiche SVG dei fatturati paddock"}
               </p>
             </div>
@@ -319,7 +319,7 @@ export default function AdminDashboard() {
               <h3 className="text-base font-extrabold uppercase text-white">
                 {locale === "en" ? "Fleet Status Monitor" : "Stato della Flotta"}
               </h3>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-xs text-slate-400">
                 {locale === "en" ? "Real-time status indicators of Paddock vehicles" : "Monitoraggio e diagnostica flotta moto"}
               </p>
             </div>
@@ -327,7 +327,7 @@ export default function AdminDashboard() {
             <div className="space-y-4">
               <div className="flex justify-between items-center p-3.5 bg-slate-950/80 border border-slate-900 rounded-xl">
                 <div className="flex items-center space-x-2 text-xs font-semibold text-slate-300">
-                  <span className="h-2 w-2 rounded-full bg-green-500 animate-ping" />
+                  <span className="h-2 w-2 rounded-full bg-green-500" />
                   <span>{locale === "en" ? "Ready / Available" : "Pronta / Disponibile"}</span>
                 </div>
                 <span className="text-sm font-black text-white">{availableBikes} {locale === "en" ? "bikes" : "moto"}</span>
@@ -346,14 +346,14 @@ export default function AdminDashboard() {
                   <span className="h-2 w-2 rounded-full bg-slate-700" />
                   <span>{locale === "en" ? "Retired from Paddock" : "Ritirata / Deposta"}</span>
                 </div>
-                <span className="text-sm font-black text-slate-500">{retiredBikes} {locale === "en" ? "bikes" : "moto"}</span>
+                <span className="text-sm font-black text-slate-400">{retiredBikes} {locale === "en" ? "bikes" : "moto"}</span>
               </div>
             </div>
           </div>
 
           <Link
             to="/admin/bikes"
-            className="w-full flex items-center justify-center space-x-1.5 bg-slate-950 hover:bg-slate-850 border border-slate-850 text-slate-400 hover:text-white font-bold uppercase text-[10px] tracking-wider py-3.5 rounded-xl transition-all mt-6 cursor-pointer"
+            className="w-full flex items-center justify-center space-x-1.5 bg-slate-950 hover:bg-slate-850 border border-slate-850 text-slate-400 hover:text-white font-bold uppercase text-xs tracking-wider py-3.5 rounded-xl transition-all mt-6 cursor-pointer"
           >
             <span>{locale === "en" ? "Manage Ohvale Fleet" : "Gestisci Flotta Ohvale"}</span>
             <ArrowRight className="h-3.5 w-3.5" />
@@ -369,26 +369,26 @@ export default function AdminDashboard() {
             <h3 className="text-base font-extrabold uppercase text-white">
               {locale === "en" ? "Latest Paddock Bookings" : "Ultime Prenotazioni"}
             </h3>
-            <p className="text-[11px] text-slate-500">
+            <p className="text-xs text-slate-400">
               {locale === "en" ? "Most recent customer reservations" : "Le riserve più recenti effettuate dai piloti"}
             </p>
           </div>
           <Link
             to="/admin/bookings"
-            className="text-[10px] font-extrabold uppercase tracking-wider text-orange-500 hover:underline cursor-pointer"
+            className="text-xs font-extrabold uppercase tracking-wider text-orange-500 hover:underline cursor-pointer"
           >
             {locale === "en" ? "View All Reservations" : "Mostra Tutte"}
           </Link>
         </div>
 
         {latestBookings.length === 0 ? (
-          <div className="p-12 text-center text-xs text-slate-500 uppercase tracking-widest font-mono">
+          <div className="p-12 text-center text-xs text-slate-400 uppercase tracking-wider font-mono">
             {locale === "en" ? "No reservations registered yet!" : "Nessuna prenotazione registrata!"}
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs text-slate-400">
-              <thead className="bg-slate-950 text-slate-500 uppercase font-bold tracking-widest border-b border-slate-900">
+              <thead className="bg-slate-950 text-slate-400 uppercase font-bold tracking-wider border-b border-slate-900">
                 <tr>
                   <th className="px-6 py-4">{locale === "en" ? "Racer / Customer" : "Pilota / Cliente"}</th>
                   <th className="px-6 py-4">{locale === "en" ? "Date" : "Data"}</th>
@@ -403,7 +403,7 @@ export default function AdminDashboard() {
                   <tr key={b.id} className="hover:bg-slate-850/20 transition-colors">
                     <td className="px-6 py-4">
                       <span className="block font-bold text-white uppercase">{b.user.name}</span>
-                      <span className="block text-[10px] text-slate-500 font-mono mt-0.5">{b.user.email}</span>
+                      <span className="block text-xs text-slate-400 font-mono mt-0.5">{b.user.email}</span>
                     </td>
                     <td className="px-6 py-4 font-mono font-extrabold text-white">{b.date}</td>
                     <td className="px-6 py-4 font-mono text-orange-400">{b.hours}</td>
@@ -412,11 +412,11 @@ export default function AdminDashboard() {
                         {b.bikes.map((bb, index) => (
                           <span 
                             key={index}
-                            className="bg-slate-950 text-slate-300 border border-slate-800 text-[10px] px-2 py-0.5 rounded font-medium flex items-center space-x-1"
+                            className="bg-slate-950 text-slate-300 border border-slate-800 text-xs px-2 py-0.5 rounded font-medium flex items-center space-x-1"
                           >
                             <span>{bb.bike.model.name}</span>
                             {bb.insuranceSelected && (
-                              <span className="h-1.5 w-1.5 rounded-full bg-green-500" title="Insured" />
+                              <span className="h-1.5 w-1.5 rounded-full bg-green-500" title="Assicurata" />
                             )}
                           </span>
                         ))}
@@ -424,7 +424,7 @@ export default function AdminDashboard() {
                     </td>
                     <td className="px-6 py-4 font-extrabold text-white">€{b.totalPrice.toFixed(2)}</td>
                     <td className="px-6 py-4">
-                      <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded border uppercase tracking-wider ${
+                      <span className={`text-xs font-extrabold px-2 py-0.5 rounded border uppercase tracking-wider ${
                         b.status === "PENDING"
                           ? "bg-amber-950/60 text-amber-400 border-amber-500/10"
                           : b.status === "CANCELLED"

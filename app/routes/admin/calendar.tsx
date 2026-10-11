@@ -79,7 +79,7 @@ export async function action({ request }: Route.ActionArgs) {
   const dateStr = formData.get("date")?.toString();
 
   if (!dateStr) {
-    return { error: "Date parameter is required." };
+    return { error: "La data è obbligatoria." };
   }
 
   // 1. Existing Override Deletion
@@ -87,7 +87,7 @@ export async function action({ request }: Route.ActionArgs) {
     await prisma.dayConfig.delete({
       where: { date: dateStr },
     });
-    return { success: "Custom date override successfully deleted." };
+    return { success: "Regola personalizzata eliminata." };
   }
 
   // 2. Existing Override Upsert
@@ -99,7 +99,7 @@ export async function action({ request }: Route.ActionArgs) {
     const notes = formData.get("notes")?.toString() || null;
 
     if (maxCapacityPerSlot <= 0) {
-      return { error: "Capacity per session must be greater than zero." };
+      return { error: "La capacità per turno deve essere maggiore di zero." };
     }
 
     await prisma.dayConfig.upsert({
@@ -119,7 +119,7 @@ export async function action({ request }: Route.ActionArgs) {
       },
     });
 
-    return { success: "Custom daily capacity & pricing overrides saved." };
+    return { success: "Capacità e prezzo personalizzati salvati." };
   }
 
   // 3. New Manual Appointment (create_booking)
@@ -134,7 +134,7 @@ export async function action({ request }: Route.ActionArgs) {
     const customCost = customCostStr && customCostStr.trim() !== "" ? parseFloat(customCostStr) : null;
 
     if (!email || !name || !dateStr || ridersCount <= 0 || sessionsCount <= 0 || !selectedHoursStr || !bikesJson) {
-      return { error: "Missing essential appointment details." };
+      return { error: "Mancano i dati essenziali dell'appuntamento." };
     }
 
     const selectedHours = selectedHoursStr.split(",").map(h => h.trim()).filter(Boolean);
@@ -147,7 +147,7 @@ export async function action({ request }: Route.ActionArgs) {
     }>;
 
     if (bikeModelAssignments.length !== ridersCount) {
-      return { error: "Every rider must be assigned an available Ohvale GP model." };
+      return { error: "Ogni pilota deve avere un modello Ohvale GP disponibile." };
     }
 
     // A. Find or create the user account
@@ -189,7 +189,7 @@ export async function action({ request }: Route.ActionArgs) {
 
       if (bookedCount + ridersCount > slotCapacity) {
         return {
-          error: `Capacity overflow for ${hour} slot. Remaining spots: ${slotCapacity - bookedCount}. Requested: ${ridersCount}.`
+          error: `Capacità superata per il turno delle ${hour}. Posti rimasti: ${slotCapacity - bookedCount}. Richiesti: ${ridersCount}.`
         };
       }
     }
@@ -233,7 +233,7 @@ export async function action({ request }: Route.ActionArgs) {
       );
       if (!candidateBike) {
         const modelDetails = await prisma.bikeModel.findUnique({ where: { id: assignment.modelId } });
-        return { error: `Sorry! No more available Ohvale GP of model "${modelDetails?.name || "selected"}" on this date.` };
+        return { error: `Spiacenti! Non ci sono più Ohvale GP del modello "${modelDetails?.name || "selezionato"}" in questa data.` };
       }
       allocatedBikeIdsInRequest.add(candidateBike.id);
       finalBikeAssignments.push({
@@ -257,7 +257,7 @@ export async function action({ request }: Route.ActionArgs) {
       });
 
       if (!tariff) {
-        return { error: "Pricing tariff rules for this day of the week are missing." };
+        return { error: "Mancano le tariffe per questo giorno della settimana." };
       }
 
       const getSessionsBasePrice = (
@@ -358,7 +358,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   if (intent === "confirm_booking") {
     const bookingId = formData.get("bookingId")?.toString();
-    if (!bookingId) return { error: "Missing booking ID." };
+    if (!bookingId) return { error: "Prenotazione non specificata." };
     await prisma.booking.update({
       where: { id: bookingId },
       data: { status: "CONFIRMED" }
@@ -371,7 +371,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   if (intent === "cancel_booking") {
     const bookingId = formData.get("bookingId")?.toString();
-    if (!bookingId) return { error: "Missing booking ID." };
+    if (!bookingId) return { error: "Prenotazione non specificata." };
     await prisma.booking.update({
       where: { id: bookingId },
       data: { status: "CANCELLED" }
@@ -606,7 +606,7 @@ export default function AdminCalendar() {
       {/* Title */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <span className="text-xs font-bold uppercase tracking-widest text-orange-500 font-mono">
+          <span className="text-xs font-bold uppercase tracking-wider text-orange-500 font-mono">
             {locale === "en" ? "Operations Hub" : "Operazioni e Calendario"}
           </span>
           <h1 className="text-3xl font-black uppercase text-white tracking-tight mt-1">
@@ -664,7 +664,7 @@ export default function AdminCalendar() {
                   <CalendarIcon className="h-4.5 w-4.5 text-orange-500" />
                   <span>{monthNames[month]} {year}</span>
                 </h3>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-xs text-slate-400">
                   {locale === "en" ? "Click any day to view bookings and manage scheduler" : "Seleziona un giorno per vedere i dettagli e inserire appuntamenti"}
                 </p>
               </div>
@@ -688,7 +688,7 @@ export default function AdminCalendar() {
             {/* Calendar Grid */}
             <div className="grid grid-cols-7 gap-2">
               {weekdays.map(d => (
-                <div key={d} className="text-center text-[10px] font-extrabold uppercase text-slate-500 py-1.5 tracking-wider font-mono">
+                <div key={d} className="text-center text-xs font-extrabold uppercase text-slate-400 py-1.5 tracking-wider font-mono">
                   {d}
                 </div>
               ))}
@@ -718,7 +718,7 @@ export default function AdminCalendar() {
                     }`}
                   >
                     <div className="flex justify-between items-center w-full">
-                      <span className={`text-[10px] font-mono font-bold ${
+                      <span className={`text-xs font-mono font-bold ${
                         isToday 
                           ? "bg-orange-600 text-white h-4.5 w-4.5 rounded flex items-center justify-center" 
                           : isClosed
@@ -739,7 +739,7 @@ export default function AdminCalendar() {
                         (() => {
                           const hasPending = dayBookings.some(b => b.status === "PENDING");
                           return (
-                            <div className={`border text-[8px] font-black uppercase px-1 py-0.5 rounded text-center truncate tracking-wide ${
+                            <div className={`border text-xs font-black uppercase px-1 py-0.5 rounded text-center truncate tracking-wide ${
                               hasPending
                                 ? "bg-amber-600/10 border-amber-500/20 text-amber-400"
                                 : "bg-orange-600/10 border-orange-500/20 text-orange-400"
@@ -750,7 +750,7 @@ export default function AdminCalendar() {
                         })()
                       )}
                       {dayConfig?.notes && !dayBookings.length && (
-                        <div className="text-[7.5px] text-slate-500 italic truncate text-center" title={dayConfig.notes}>
+                        <div className="text-[7.5px] text-slate-400 italic truncate text-center" title={dayConfig.notes}>
                           {dayConfig.notes}
                         </div>
                       )}
@@ -770,7 +770,7 @@ export default function AdminCalendar() {
                 {/* Header info */}
                 <div className="flex justify-between items-start border-b border-slate-850 pb-4">
                   <div>
-                    <span className="text-[10px] font-extrabold uppercase text-slate-500 tracking-widest font-mono">{selectedDate}</span>
+                    <span className="text-xs font-extrabold uppercase text-slate-400 tracking-wider font-mono">{selectedDate}</span>
                     <h3 className="text-base font-extrabold uppercase text-white mt-0.5">
                       {locale === "en" ? "Day Planner" : "Programma Giorno"}
                     </h3>
@@ -779,7 +779,7 @@ export default function AdminCalendar() {
                   {!showApptForm && (
                     <button
                       onClick={() => setShowApptForm(true)}
-                      className="flex items-center space-x-1 bg-orange-600 text-white text-[10px] font-black uppercase px-3 py-2 rounded-lg hover:bg-orange-500 transition-all cursor-pointer"
+                      className="flex items-center space-x-1 bg-orange-600 text-white text-xs font-black uppercase px-3 py-2 rounded-lg hover:bg-orange-500 transition-all cursor-pointer"
                     >
                       <Plus className="h-3.5 w-3.5" />
                       <span>{locale === "en" ? "Appointment" : "Appuntamento"}</span>
@@ -794,11 +794,11 @@ export default function AdminCalendar() {
                     <input type="hidden" name="date" value={selectedDate} />
 
                     <div className="flex justify-between items-center">
-                      <span className="text-[11px] font-bold text-orange-400 uppercase tracking-wide">{locale === "en" ? "New Appointment Form" : "Nuovo Appuntamento"}</span>
+                      <span className="text-xs font-bold text-orange-400 uppercase tracking-wide">{locale === "en" ? "New Appointment Form" : "Nuovo Appuntamento"}</span>
                       <button
                         type="button"
                         onClick={() => setShowApptForm(false)}
-                        className="text-[10px] font-extrabold uppercase text-slate-500 hover:text-white transition-colors cursor-pointer"
+                        className="text-xs font-extrabold uppercase text-slate-400 hover:text-white transition-colors cursor-pointer"
                       >
                         {locale === "en" ? "Cancel" : "Annulla"}
                       </button>
@@ -806,7 +806,7 @@ export default function AdminCalendar() {
 
                     {/* Email Selection with datalist suggestions */}
                     <div className="space-y-1.5">
-                      <label className="block text-[10px] uppercase text-slate-500 font-bold tracking-wider">
+                      <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider">
                         {locale === "en" ? "Client Email" : "Email Cliente"}
                       </label>
                       <input
@@ -828,7 +828,7 @@ export default function AdminCalendar() {
 
                     {/* Client Name */}
                     <div className="space-y-1.5">
-                      <label className="block text-[10px] uppercase text-slate-500 font-bold tracking-wider">
+                      <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider">
                         {locale === "en" ? "Client Name" : "Nome Cliente"}
                       </label>
                       <input
@@ -837,7 +837,7 @@ export default function AdminCalendar() {
                         required
                         value={newApptName}
                         onChange={(e) => setNewApptName(e.target.value)}
-                        placeholder="John Doe"
+                        placeholder="Mario Rossi"
                         className="w-full bg-slate-950 border border-slate-850 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 text-white rounded-xl py-2.5 px-3.5 outline-none text-xs"
                       />
                     </div>
@@ -845,7 +845,7 @@ export default function AdminCalendar() {
                     {/* Crew & Sessions counts row */}
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1.5">
-                        <label className="block text-[10px] uppercase text-slate-500 font-bold tracking-wider">
+                        <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider">
                           {locale === "en" ? "Riders" : "Piloti"}
                         </label>
                         <select
@@ -861,7 +861,7 @@ export default function AdminCalendar() {
                       </div>
 
                       <div className="space-y-1.5">
-                        <label className="block text-[10px] uppercase text-slate-500 font-bold tracking-wider">
+                        <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider">
                           {locale === "en" ? "Sessions" : "Turni"}
                         </label>
                         <select
@@ -879,7 +879,7 @@ export default function AdminCalendar() {
 
                     {/* Hour Slots selection */}
                     <div className="space-y-2">
-                      <label className="block text-[10px] uppercase text-slate-500 font-bold tracking-wider">
+                      <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider">
                         {locale === "en" ? "Time Slots" : "Turni Orari"}
                       </label>
                       <div className="flex flex-wrap gap-2">
@@ -921,17 +921,17 @@ export default function AdminCalendar() {
 
                     {/* Rider details & Bike model assignments loops */}
                     <div className="space-y-4 pt-4 border-t border-slate-850">
-                      <span className="block text-[10px] uppercase text-slate-500 font-extrabold tracking-wider">{locale === "en" ? "Rider Customization" : "Configurazione Piloti"}</span>
+                      <span className="block text-xs uppercase text-slate-400 font-extrabold tracking-wider">{locale === "en" ? "Rider Customization" : "Configurazione Piloti"}</span>
                       {newApptBikes.map((bikeAssign, idx) => {
                         return (
                           <div key={idx} className="bg-slate-950 p-4.5 rounded-2xl border border-slate-850 space-y-4 text-xs">
-                            <span className="block font-black text-orange-500 uppercase tracking-wide text-[10px]">
+                            <span className="block font-black text-orange-500 uppercase tracking-wide text-xs">
                               {locale === "en" ? `Rider #${idx + 1}` : `Pilota #${idx + 1}`}
                             </span>
 
                             {/* Pilot Name input */}
                             <div className="space-y-1">
-                              <label className="block text-[9px] uppercase text-slate-500 font-bold">{locale === "en" ? "Name" : "Nome"}</label>
+                              <label className="block text-xs uppercase text-slate-400 font-bold">{locale === "en" ? "Name" : "Nome"}</label>
                               <input
                                 type="text"
                                 placeholder={idx === 0 ? newApptName : `Rider #${idx + 1}`}
@@ -947,7 +947,7 @@ export default function AdminCalendar() {
 
                             {/* Bike model selector */}
                             <div className="space-y-1">
-                              <label className="block text-[9px] uppercase text-slate-500 font-bold">{locale === "en" ? "Ohvale Model" : "Modello Ohvale"}</label>
+                              <label className="block text-xs uppercase text-slate-400 font-bold">{locale === "en" ? "Ohvale Model" : "Modello Ohvale"}</label>
                               <select
                                 value={bikeAssign.modelId}
                                 onChange={(e) => {
@@ -961,7 +961,7 @@ export default function AdminCalendar() {
                                   const availCount = getAvailableBikesCountForModelOnDate(model.model, selectedDate);
                                   return (
                                     <option key={model.id} value={model.id}>
-                                      {model.name} (Mod: x{model.priceModifier.toFixed(1)}, Avail: {availCount})
+                                      {model.name} (Coeff.: x{model.priceModifier.toFixed(1)}, Disp.: {availCount})
                                     </option>
                                   );
                                 })}
@@ -969,7 +969,7 @@ export default function AdminCalendar() {
                             </div>
 
                             {/* Addons checks */}
-                            <div className="flex space-x-4 pt-1.5 text-[10px]">
+                            <div className="flex space-x-4 pt-1.5 text-xs">
                               <label className="flex items-center space-x-2 text-slate-400 hover:text-white cursor-pointer select-none">
                                 <input
                                   type="checkbox"
@@ -1010,7 +1010,7 @@ export default function AdminCalendar() {
                         <span className="font-bold text-slate-400 uppercase tracking-wide">
                           {locale === "en" ? "Pricing Summary" : "Riepilogo Prezzi"}
                         </span>
-                        <span className="text-slate-500 font-mono text-[9px] flex items-center space-x-1">
+                        <span className="text-slate-400 font-mono text-xs flex items-center space-x-1">
                           <Euro className="h-3 w-3" />
                           <span>EUR (€)</span>
                         </span>
@@ -1026,7 +1026,7 @@ export default function AdminCalendar() {
                       </div>
 
                       <div className="space-y-1.5 pt-2 border-t border-slate-900">
-                        <label className="block text-[10px] uppercase text-slate-500 font-bold tracking-wider">
+                        <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider">
                           {locale === "en" ? "Custom Cost Override (Optional)" : "Costo Personalizzato Override (Opzionale)"}
                         </label>
                         <div className="relative">
@@ -1041,7 +1041,7 @@ export default function AdminCalendar() {
                             className="w-full bg-slate-900 border border-slate-850 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 text-white rounded-xl py-2.5 px-3.5 outline-none text-xs font-mono"
                           />
                         </div>
-                        <p className="text-[10px] text-slate-500 leading-normal">
+                        <p className="text-xs text-slate-400 leading-normal">
                           {locale === "en" 
                             ? "Leave empty to bill the customer the estimated standard price."
                             : "Lascia vuoto per addebitare al cliente il prezzo standard stimato."
@@ -1064,7 +1064,7 @@ export default function AdminCalendar() {
                   /* Standard Bookings view for this day */
                   <div className="space-y-4">
                     <div className="flex justify-between items-center">
-                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">
+                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">
                         {locale === "en" ? `Bookings (${selectedDayBookings.length})` : `Prenotazioni (${selectedDayBookings.length})`}
                       </span>
                     </div>
@@ -1075,7 +1075,7 @@ export default function AdminCalendar() {
                         <h4 className="text-xs font-bold text-slate-400 uppercase">
                           {locale === "en" ? "No Reservations" : "Nessuna Prenotazione"}
                         </h4>
-                        <p className="text-[10px] text-slate-600 leading-normal">
+                        <p className="text-xs text-slate-600 leading-normal">
                           {locale === "en" ? "No bookings confirmed for this date yet. Create one manually or wait for clients." : "Ancora nessun cliente prenotato in questa data."}
                         </p>
                       </div>
@@ -1086,25 +1086,25 @@ export default function AdminCalendar() {
                             <div className="flex justify-between items-start">
                               <div>
                                 <span className="block font-black text-white uppercase truncate max-w-40">{booking.user.name}</span>
-                                <span className="block text-[9px] text-slate-500 truncate max-w-40 font-mono mt-0.5">{booking.user.email}</span>
+                                <span className="block text-xs text-slate-400 truncate max-w-40 font-mono mt-0.5">{booking.user.email}</span>
                                 {booking.status === "PENDING" && (
-                                  <span className="inline-block bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[8px] font-bold uppercase px-1.5 py-0.5 rounded mt-1">
+                                  <span className="inline-block bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-bold uppercase px-1.5 py-0.5 rounded mt-1">
                                     {locale === "en" ? "Pending" : "In attesa"}
                                   </span>
                                 )}
                               </div>
-                              <span className="bg-slate-900 border border-slate-850 px-2 py-0.5 text-[9px] text-white font-mono rounded select-none shrink-0 font-extrabold uppercase">
+                              <span className="bg-slate-900 border border-slate-850 px-2 py-0.5 text-xs text-white font-mono rounded select-none shrink-0 font-extrabold uppercase">
                                 €{booking.totalPrice.toFixed(0)}
                               </span>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-2 text-[10px] font-mono border-t border-slate-900 pt-2.5 text-slate-400">
+                            <div className="grid grid-cols-2 gap-2 text-xs font-mono border-t border-slate-900 pt-2.5 text-slate-400">
                               <span className="flex items-center space-x-1.5">
-                                <Users className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+                                <Users className="h-3.5 w-3.5 text-slate-400 shrink-0" />
                                 <span>{booking.peopleCount} {booking.peopleCount === 1 ? "Pilota" : "Piloti"}</span>
                               </span>
                               <span className="flex items-center space-x-1.5">
-                                <Clock className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+                                <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
                                 <span className="truncate" title={booking.hours}>{booking.hours}</span>
                               </span>
                             </div>
@@ -1112,10 +1112,10 @@ export default function AdminCalendar() {
                             {/* Bikes allocated info list */}
                             <div className="space-y-1.5 pt-2 border-t border-slate-900">
                               {booking.bikes.map((bb, index) => (
-                                <div key={bb.id} className="bg-slate-900/60 p-2 rounded border border-slate-900 flex justify-between items-center text-[10px] text-slate-300">
+                                <div key={bb.id} className="bg-slate-900/60 p-2 rounded border border-slate-900 flex justify-between items-center text-xs text-slate-300">
                                   <span>{index + 1}. {bb.pilotName}: {bb.bike.model.name}</span>
                                   {bb.insuranceSelected && (
-                                    <span className="bg-green-500/10 text-green-400 text-[8px] font-bold uppercase px-1 rounded">Ass.</span>
+                                    <span className="bg-green-500/10 text-green-400 text-xs font-bold uppercase px-1 rounded">Ass.</span>
                                   )}
                                 </div>
                               ))}
@@ -1165,11 +1165,11 @@ export default function AdminCalendar() {
               </div>
             ) : (
               <div className="bg-slate-950/60 border border-slate-850 p-10 rounded-3xl text-center space-y-4 shadow-xl">
-                <CalendarIcon className="h-10 w-10 text-slate-700 mx-auto animate-pulse" />
+                <CalendarIcon className="h-10 w-10 text-slate-700 mx-auto" />
                 <h4 className="text-xs font-bold text-slate-400 uppercase">
                   {locale === "en" ? "Select Date to Start" : "Seleziona una Data"}
                 </h4>
-                <p className="text-[11px] text-slate-600 max-w-xs mx-auto leading-relaxed">
+                <p className="text-xs text-slate-600 max-w-xs mx-auto leading-relaxed">
                   {locale === "en" 
                     ? "Click on any grid cell day on the left calendar to review detailed schedules or create custom manual appointments."
                     : "Fai clic su un giorno del calendario a sinistra per visualizzare le prenotazioni o aggiungere manualmente appuntamenti."
@@ -1192,7 +1192,7 @@ export default function AdminCalendar() {
               <h3 className="text-base font-extrabold uppercase text-white">
                 {locale === "en" ? "Create / Edit Override" : "Nuova Eccezione Giornaliera"}
               </h3>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-xs text-slate-400">
                 {locale === "en" ? "Configure parameters for specific dates" : "Configura parametri per date precise"}
               </p>
             </div>
@@ -1202,7 +1202,7 @@ export default function AdminCalendar() {
 
               {/* Target Date */}
               <div>
-                <label className="block text-xs uppercase text-slate-500 font-bold tracking-wider mb-2">
+                <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider mb-2">
                   {locale === "en" ? "Target Date" : "Data Selezionata"}
                 </label>
                 <input
@@ -1222,7 +1222,7 @@ export default function AdminCalendar() {
                   <span className="block text-xs font-bold text-slate-200 uppercase">
                     {locale === "en" ? "Paddock Operations" : "Stato Paddock"}
                   </span>
-                  <span className="text-[10px] text-slate-500 leading-normal block mt-0.5">
+                  <span className="text-xs text-slate-400 leading-normal block mt-0.5">
                     {locale === "en" ? "Toggle off to fully block all bookings on this date." : "Disattiva per chiudere del tutto la pista e impedire riserve."}
                   </span>
                 </div>
@@ -1231,10 +1231,10 @@ export default function AdminCalendar() {
                   <button
                     type="button"
                     onClick={() => setIsAvailable(true)}
-                    className={`px-3 py-1.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-md text-xs font-extrabold uppercase tracking-wider transition-all cursor-pointer ${
                       isAvailable 
                         ? "bg-green-600 text-white" 
-                        : "text-slate-500 hover:text-slate-300"
+                        : "text-slate-400 hover:text-slate-300"
                     }`}
                   >
                     {locale === "en" ? "Open" : "Attivo"}
@@ -1242,10 +1242,10 @@ export default function AdminCalendar() {
                   <button
                     type="button"
                     onClick={() => setIsAvailable(false)}
-                    className={`px-3 py-1.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-md text-xs font-extrabold uppercase tracking-wider transition-all cursor-pointer ${
                       !isAvailable 
                         ? "bg-red-600 text-white" 
-                        : "text-slate-500 hover:text-slate-300"
+                        : "text-slate-400 hover:text-slate-300"
                     }`}
                   >
                     {locale === "en" ? "Block" : "Chiuso"}
@@ -1260,10 +1260,10 @@ export default function AdminCalendar() {
                   {/* Max capacity per slot */}
                   <div>
                     <div className="flex justify-between items-center mb-2">
-                      <label className="block text-xs uppercase text-slate-500 font-bold tracking-wider">
+                      <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider">
                         {locale === "en" ? "Slot Participant Capacity" : "Capacità Turno Piloti"}
                       </label>
-                      <span className="text-[9px] text-slate-500 uppercase font-mono">
+                      <span className="text-xs text-slate-400 uppercase font-mono">
                         {locale === "en" ? "Standard limit is 5" : "Limite standard è 5"}
                       </span>
                     </div>
@@ -1290,10 +1290,10 @@ export default function AdminCalendar() {
                   {/* Custom price modifier */}
                   <div>
                     <div className="flex justify-between items-center mb-2">
-                      <label className="block text-xs uppercase text-slate-500 font-bold tracking-wider">
+                      <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider">
                         {locale === "en" ? "Price Modifier Override" : "Moltiplicatore Prezzo Override"}
                       </label>
-                      <span className="text-[9px] text-slate-500 uppercase font-mono">
+                      <span className="text-xs text-slate-400 uppercase font-mono">
                         {locale === "en" ? "Optional e.g. 1.25" : "Opzionale es. 1.25"}
                       </span>
                     </div>
@@ -1312,7 +1312,7 @@ export default function AdminCalendar() {
 
               {/* Notes / Event Description */}
               <div>
-                <label className="block text-xs uppercase text-slate-500 font-bold tracking-wider mb-2">
+                <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider mb-2">
                   {locale === "en" ? "Paddock Notes / Event Label" : "Note Paddock / Descrizione Evento"}
                 </label>
                 <textarea
@@ -1320,7 +1320,7 @@ export default function AdminCalendar() {
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   rows={3}
-                  placeholder="e.g. Mugello Private Coaching Class, Track closed for corporate maintenance, Holiday rates premium..."
+                  placeholder="es. Corso privato al Mugello, pista chiusa per manutenzione, tariffa festiva maggiorata..."
                   className="w-full bg-slate-950 border border-slate-850 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 text-white rounded-xl py-3 px-4 outline-none text-xs leading-relaxed placeholder-slate-700"
                 />
               </div>
@@ -1338,7 +1338,7 @@ export default function AdminCalendar() {
                   }}
                   className="text-xs font-bold uppercase text-slate-400 hover:text-white px-4 py-3 rounded-xl border border-slate-800 transition-colors cursor-pointer"
                 >
-                  Reset
+                  Ripristina
                 </button>
                 <button
                   type="submit"
@@ -1360,18 +1360,18 @@ export default function AdminCalendar() {
                 <CalendarDays className="h-5 w-5 text-orange-500" />
                 <span>{locale === "en" ? "Active Overrides Inventory" : "Inventario Eccezioni Attive"}</span>
               </h3>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-xs text-slate-400">
                 {locale === "en" ? "List of all active calendar pricing and capacity overrides" : "Lista di tutte le regole di capacità o prezzo programmate"}
               </p>
             </div>
 
             {dayConfigs.length === 0 ? (
               <div className="p-16 text-center space-y-4 border border-dashed border-slate-800 rounded-2xl bg-slate-950/40">
-                <CalendarCheck className="h-10 w-10 text-slate-700 mx-auto animate-pulse" />
+                <CalendarCheck className="h-10 w-10 text-slate-700 mx-auto" />
                 <h4 className="text-xs font-bold text-slate-400 uppercase">
                   {locale === "en" ? "No Overrides Programmed" : "Nessuna Eccezione Programmata"}
                 </h4>
-                <p className="text-[11px] text-slate-600 max-w-xs mx-auto">
+                <p className="text-xs text-slate-600 max-w-xs mx-auto">
                   {locale === "en" 
                     ? "Standard operating slots and baseline weekly tariffs are active across all calendar dates."
                     : "Le sessioni orarie e le tariffe base settimanali si applicano regolarmente a tutte le date in calendario."
@@ -1394,7 +1394,7 @@ export default function AdminCalendar() {
                     <div className="space-y-1.5">
                       <div className="flex items-center space-x-2">
                         <span className="font-mono font-extrabold text-sm text-white">{config.date}</span>
-                        <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded border tracking-wider ${
+                        <span className={`text-xs font-black uppercase px-2 py-0.5 rounded border tracking-wider ${
                           !config.isAvailable
                             ? "bg-red-950/60 text-red-400 border-red-500/10"
                             : "bg-green-950/60 text-green-400 border-green-500/10"
@@ -1404,10 +1404,10 @@ export default function AdminCalendar() {
                       </div>
 
                       {config.isAvailable && (
-                        <div className="flex items-center space-x-4 text-[10px] text-slate-500 font-bold uppercase tracking-wider font-mono">
+                        <div className="flex items-center space-x-4 text-xs text-slate-400 font-bold uppercase tracking-wider font-mono">
                           <span className="flex items-center space-x-1">
                             <Users className="h-3.5 w-3.5" />
-                            <span>{locale === "en" ? "Capacity" : "Capacità"}: {config.maxCapacityPerSlot} / Slot</span>
+                            <span>{locale === "en" ? "Capacity" : "Capacità"}: {config.maxCapacityPerSlot} / turno</span>
                           </span>
                           {config.customPriceModifier && (
                             <span>{locale === "en" ? "Modifier" : "Moltiplicatore"}: x{config.customPriceModifier.toFixed(2)}</span>
@@ -1416,7 +1416,7 @@ export default function AdminCalendar() {
                       )}
 
                       {config.notes && (
-                        <p className="text-[11px] text-orange-400 font-semibold italic">
+                        <p className="text-xs text-orange-400 font-semibold italic">
                           * {config.notes}
                         </p>
                       )}
@@ -1426,7 +1426,7 @@ export default function AdminCalendar() {
                     <div className="flex items-center space-x-4 shrink-0 w-full sm:w-auto justify-end">
                       <button
                         onClick={() => handleEditOverride(config)}
-                        className="text-[10px] font-extrabold uppercase text-slate-400 hover:text-white transition-colors cursor-pointer"
+                        className="text-xs font-extrabold uppercase text-slate-400 hover:text-white transition-colors cursor-pointer"
                       >
                         {locale === "en" ? "Edit" : "Modifica"}
                       </button>
@@ -1437,7 +1437,7 @@ export default function AdminCalendar() {
                         <button
                           type="submit"
                           disabled={isSubmitting}
-                          className="text-[10px] font-extrabold uppercase text-slate-500 hover:text-red-400 transition-colors cursor-pointer"
+                          className="text-xs font-extrabold uppercase text-slate-400 hover:text-red-400 transition-colors cursor-pointer"
                           onClick={(e) => {
                             if (!confirm(locale === "en" ? "Are you sure you want to delete this custom override? Baseline rules will be restored for this date." : "Sei sicuro di voler rimuovere questa eccezione? Si ripristineranno le regole base per questa data.")) {
                               e.preventDefault();

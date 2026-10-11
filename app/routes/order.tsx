@@ -73,7 +73,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   }
 
   if (!booking) {
-    throw new Response("Paddock Pass / Order Not Found", { status: 404 });
+    throw new Response("Pass paddock / ordine non trovato", { status: 404 });
   }
 
   // Check authorization: Admin can view all. Creator and assigned pilots can view.
@@ -82,7 +82,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   const isAdmin = user.role === "ADMIN";
 
   if (!isAdmin && !isCreator && !isPilot) {
-    throw new Response("Access Denied: You do not have permissions to view this paddock pass.", { status: 403 });
+    throw new Response("Accesso negato: non hai i permessi per vedere questo pass paddock.", { status: 403 });
   }
 
   const parsedDate = new Date(booking.date);
@@ -156,7 +156,7 @@ export async function action({ params, request }: Route.ActionArgs) {
   });
 
   if (!booking) {
-    return { error: "Order not found." };
+    return { error: "Ordine non trovato." };
   }
 
   const isCreator = booking.userId === userId;
@@ -166,7 +166,7 @@ export async function action({ params, request }: Route.ActionArgs) {
     // Only creator (for future dates) or Admin can cancel
     const isFutureDate = isTodayOrFuture(booking.date);
     if (!isAdmin && (!isCreator || !isFutureDate)) {
-      return { error: "Not authorized to cancel this booking." };
+      return { error: "Non hai i permessi per annullare questa prenotazione." };
     }
 
     await prisma.booking.update({
@@ -178,7 +178,7 @@ export async function action({ params, request }: Route.ActionArgs) {
     const requestHost = `${url.protocol}//${url.host}`;
     await sendBookingCancelledEmail(params.id!, requestHost);
 
-    return { success: "Booking successfully cancelled." };
+    return { success: "Prenotazione annullata." };
   }
 
   if (intent === "confirm" && isAdmin) {
@@ -191,7 +191,7 @@ export async function action({ params, request }: Route.ActionArgs) {
     const requestHost = `${url.protocol}//${url.host}`;
     await sendBookingConfirmedEmail(params.id!, requestHost);
 
-    return { success: "Booking successfully marked as confirmed." };
+    return { success: "Prenotazione confermata." };
   }
 
   return null;
@@ -285,35 +285,35 @@ export default function OrderDetails() {
             ) : null}
             <h1 className="text-2xl font-black uppercase tracking-tight">{companyConfig.companyName}</h1>
             <p className="text-sm font-bold text-slate-600">{companyConfig.circuitName}</p>
-            <p className="text-xs text-slate-500 mt-1">Official Track Session Invoice & Paddock Pass</p>
+            <p className="text-xs text-slate-400 mt-1">{locale === "en" ? "Official Track Session Invoice & Paddock Pass" : "Fattura sessione in pista e Pass Paddock"}</p>
           </div>
           <div className="text-right">
             <span className="print-badge font-mono">{booking.status}</span>
             <p className="text-xs font-mono font-bold mt-2">REF: {booking.id.toUpperCase()}</p>
-            <p className="text-xs text-slate-500 mt-1">Date: {booking.date}</p>
+            <p className="text-xs text-slate-400 mt-1">Date: {booking.date}</p>
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-6 mb-8 text-xs">
           <div>
-            <h3 className="font-extrabold uppercase mb-2 border-b border-slate-200 pb-1">Order Details</h3>
-            <p><strong>Primary Buyer:</strong> {booking.user.name} ({booking.user.email})</p>
-            <p><strong>Date of Event:</strong> {booking.date}</p>
-            <p><strong>Track Format:</strong> {booking.bookingType === "CHAMPIONSHIP" ? `Championship (${booking.championshipType})` : "Standard Track Pack"}</p>
-            <p><strong>Selected Hours:</strong> {booking.hours}</p>
-            <p><strong>Rider Count:</strong> {booking.peopleCount} Racer(s)</p>
+            <h3 className="font-extrabold uppercase mb-2 border-b border-slate-200 pb-1">{locale === "en" ? "Order Details" : "Dettagli ordine"}</h3>
+            <p><strong>{locale === "en" ? "Primary Buyer:" : "Intestatario:"}</strong> {booking.user.name} ({booking.user.email})</p>
+            <p><strong>{locale === "en" ? "Date of Event:" : "Data dell'evento:"}</strong> {booking.date}</p>
+            <p><strong>{locale === "en" ? "Track Format:" : "Formato:"}</strong> {booking.bookingType === "CHAMPIONSHIP" ? `Championship (${booking.championshipType})` : (locale === "en" ? "Standard Track Pack" : "Pacchetto pista standard")}</p>
+            <p><strong>{locale === "en" ? "Selected Hours:" : "Orari scelti:"}</strong> {booking.hours}</p>
+            <p><strong>{locale === "en" ? "Rider Count:" : "Numero di piloti:"}</strong> {booking.peopleCount} {locale === "en" ? "Racer(s)" : "piloti"}</p>
           </div>
           <div className="flex justify-end">
             <div className="text-center">
               {qrCodeSrc && (
-                <img src={qrCodeSrc} alt="Verification QR Code" className="h-28 w-28 mx-auto" />
+                <img src={qrCodeSrc} alt={locale === "en" ? "Verification QR Code" : "QR di verifica"} className="h-28 w-28 mx-auto" />
               )}
-              <p className="text-[9px] text-slate-500 mt-1 font-mono">Scan to Verify in Backoffice</p>
+              <p className="text-xs text-slate-400 mt-1 font-mono">{locale === "en" ? "Scan to Verify in Backoffice" : "Scansiona per verificare nel backoffice"}</p>
             </div>
           </div>
         </div>
 
-        <h3 className="text-sm font-extrabold uppercase mb-3 border-b border-slate-200 pb-1">Grid Allocations</h3>
+        <h3 className="text-sm font-extrabold uppercase mb-3 border-b border-slate-200 pb-1">{locale === "en" ? "Grid Allocations" : "Assegnazioni in griglia"}</h3>
         <div className="space-y-4 mb-8">
           {booking.bikes.map((bb, index) => {
             const modifierCost = booking.bookingType === "STANDARD"
@@ -327,16 +327,16 @@ export default function OrderDetails() {
               <div key={index} className="border border-slate-350 p-4 rounded-xl flex justify-between items-start text-xs">
                 <div>
                   <p className="font-bold text-sm">{bb.pilotName} {bb.pilotUser ? `(@${bb.pilotUser.name})` : ""}</p>
-                  <p className="text-slate-650 mt-1">Ohvale GP: <strong>{bb.bike.model.name}</strong> (Displacement: {bb.bike.model.displacement}cc, Race Number: #{bb.bike.raceNumber || "N/A"})</p>
-                  <div className="text-[10px] text-slate-500 font-mono mt-2 flex flex-wrap gap-2">
-                    <span>Base: €{basePricePerPerson.toFixed(2)}</span>
-                    {modifierCost > 0 && <span>| Upgrade: +€{modifierCost.toFixed(2)}</span>}
-                    {insuranceCost > 0 && <span>| Ins: +€{insuranceCost.toFixed(2)}</span>}
-                    {apparelCost > 0 && <span>| Apparel: +€{apparelCost.toFixed(2)}</span>}
+                  <p className="text-slate-650 mt-1">{locale === "en" ? "Ohvale GP:" : "Ohvale GP:"} <strong>{bb.bike.model.name}</strong> {locale === "en" ? "(Displacement:" : "(Cilindrata:"} {bb.bike.model.displacement}{locale === "en" ? "cc, Race Number: #" : "cc, numero di gara: #"}{bb.bike.raceNumber || "N/A"})</p>
+                  <div className="text-xs text-slate-400 font-mono mt-2 flex flex-wrap gap-2">
+                    <span>{locale === "en" ? "Base: €" : "Base: €"}{basePricePerPerson.toFixed(2)}</span>
+                    {modifierCost > 0 && <span>{locale === "en" ? "| Upgrade: +€" : "| Maggiorazione: +€"}{modifierCost.toFixed(2)}</span>}
+                    {insuranceCost > 0 && <span>{locale === "en" ? "| Ins: +€" : "| Assic.: +€"}{insuranceCost.toFixed(2)}</span>}
+                    {apparelCost > 0 && <span>{locale === "en" ? "| Apparel: +€" : "| Abbigl.: +€"}{apparelCost.toFixed(2)}</span>}
                   </div>
                 </div>
                 <div className="text-right">
-                  <span className="text-[10px] text-slate-500 block">Rider Total</span>
+                  <span className="text-xs text-slate-400 block">{locale === "en" ? "Rider Total" : "Totale pilota"}</span>
                   <span className="font-bold text-sm">€{pilotTotal.toFixed(2)}</span>
                 </div>
               </div>
@@ -345,14 +345,14 @@ export default function OrderDetails() {
         </div>
 
         <div className="border-t border-slate-300 pt-4 flex justify-between items-start">
-          <p className="text-[10px] text-slate-500 max-w-sm">System generated via {companyConfig.companyName}. Thank you for your business.</p>
+          <p className="text-xs text-slate-400 max-w-sm">{locale === "en" ? "System generated via" : "Generato da"} {companyConfig.companyName}{locale === "en" ? ". Thank you for your business." : ". Grazie per averci scelto."}</p>
           <div className="text-right space-y-1">
             <div className="text-xs text-slate-650 font-bold">
-              <span>Avg. Price Per Person:</span>
+              <span>{locale === "en" ? "Avg. Price Per Person:" : "Prezzo medio a persona:"}</span>
               <span className="ml-1 text-slate-800">€{(booking.totalPrice / booking.peopleCount).toFixed(2)}</span>
             </div>
             <div>
-              <span className="text-xs font-bold text-slate-500 uppercase block">Grand Total Paid</span>
+              <span className="text-xs font-bold text-slate-400 uppercase block">{locale === "en" ? "Grand Total Paid" : "Totale pagato"}</span>
               <span className="text-lg font-black block">€{booking.totalPrice.toFixed(2)}</span>
             </div>
           </div>
@@ -431,11 +431,11 @@ export default function OrderDetails() {
             <div className="lg:col-span-2 space-y-6">
               
               {/* Main parameters Card */}
-              <div className="bg-slate-900/60 backdrop-blur border border-slate-850 p-6 rounded-3xl space-y-5 shadow-xl relative overflow-hidden">
+              <div className="bg-slate-900/60 border border-slate-850 p-6 rounded-3xl space-y-5 shadow-xl relative overflow-hidden">
                 
                 {/* Status indicator absolute corner */}
                 <div className="absolute top-0 right-0">
-                  <span className={`text-[10px] font-black uppercase tracking-widest px-4 py-2 border-l border-b rounded-bl-2xl font-mono block ${
+                  <span className={`text-xs font-black uppercase tracking-wider px-4 py-2 border-l border-b rounded-bl-2xl font-mono block ${
                     isCancelled
                       ? "bg-red-950/60 text-red-400 border-red-500/20"
                       : booking.status === "PENDING"
@@ -461,28 +461,28 @@ export default function OrderDetails() {
 
                 <div className="grid grid-cols-2 gap-6 pt-4 border-t border-slate-850 text-xs">
                   <div>
-                    <span className="block text-slate-500 uppercase tracking-widest text-[9px] font-bold">{locale === "en" ? "Booking Owner" : "Intestatario Prenotazione"}</span>
+                    <span className="block text-slate-400 uppercase tracking-wider text-xs font-bold">{locale === "en" ? "Booking Owner" : "Intestatario Prenotazione"}</span>
                     <span className="block font-black text-slate-200 mt-1 uppercase truncate">{booking.user.name}</span>
-                    <span className="block font-mono text-[10px] text-slate-400 truncate mt-0.5">{booking.user.email}</span>
+                    <span className="block font-mono text-xs text-slate-400 truncate mt-0.5">{booking.user.email}</span>
                   </div>
 
                   <div>
-                    <span className="block text-slate-500 uppercase tracking-widest text-[9px] font-bold">{locale === "en" ? "Format & Mode" : "Formato & Tipo"}</span>
+                    <span className="block text-slate-400 uppercase tracking-wider text-xs font-bold">{locale === "en" ? "Format & Mode" : "Formato & Tipo"}</span>
                     <span className="block font-black text-slate-200 mt-1 uppercase">
-                      {booking.bookingType === "CHAMPIONSHIP" ? `Championship (${booking.championshipType})` : "Standard Session Pack"}
+                      {booking.bookingType === "CHAMPIONSHIP" ? `Championship (${booking.championshipType})` : (locale === "en" ? "Standard Session Pack" : "Pacchetto turni standard")}
                     </span>
-                    <span className="block text-[10px] text-orange-450 uppercase mt-0.5">
+                    <span className="block text-xs text-orange-450 uppercase mt-0.5">
                       {booking.bikeSelectionMode === "FIXED" ? (locale === "en" ? "Fixed Model" : "Monomarca") : (locale === "en" ? "Mixed Models" : "Misto")}
                     </span>
                   </div>
 
                   <div>
-                    <span className="block text-slate-500 uppercase tracking-widest text-[9px] font-bold">{locale === "en" ? "Time Slots" : "Orari Turni"}</span>
+                    <span className="block text-slate-400 uppercase tracking-wider text-xs font-bold">{locale === "en" ? "Time Slots" : "Orari Turni"}</span>
                     <span className="block font-black text-white mt-1 font-mono tracking-wider">{booking.hours}</span>
                   </div>
 
                   <div>
-                    <span className="block text-slate-500 uppercase tracking-widest text-[9px] font-bold">{locale === "en" ? "Track Sessions" : "Turni totali"}</span>
+                    <span className="block text-slate-400 uppercase tracking-wider text-xs font-bold">{locale === "en" ? "Track Sessions" : "Turni totali"}</span>
                     <span className="block font-black text-white mt-1">
                       {booking.bookingType === "CHAMPIONSHIP"
                         ? `${booking.sessionsCount} ${locale === "en" ? "Sessions" : "Turni"}`
@@ -516,14 +516,14 @@ export default function OrderDetails() {
                           </div>
                           <h4 className="text-sm font-black uppercase text-white">{bb.pilotName}</h4>
                           {isPilotSelf && (
-                            <span className="text-[8px] bg-orange-600/20 text-orange-400 border border-orange-500/20 uppercase font-black px-1.5 py-0.5 rounded">
+                            <span className="text-xs bg-orange-600/20 text-orange-400 border border-orange-500/20 uppercase font-black px-1.5 py-0.5 rounded">
                               {locale === "en" ? "You" : "Tu"}
                             </span>
                           )}
                         </div>
 
                         {bb.pilotUser && (
-                          <div className="flex items-center space-x-1 text-[9px] bg-blue-950/40 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-lg">
+                          <div className="flex items-center space-x-1 text-xs bg-blue-950/40 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-lg">
                             <UserCheck className="h-3 w-3" />
                             <span>@{bb.pilotUser.name} ({locale === "en" ? "Verified" : "Verificato"})</span>
                           </div>
@@ -533,20 +533,20 @@ export default function OrderDetails() {
                       {/* Bike specific info */}
                       <div className="bg-slate-950 p-4 rounded-2xl border border-slate-900 flex justify-between items-center text-xs">
                         <div className="space-y-1">
-                          <span className="block text-slate-500 uppercase tracking-widest text-[8px] font-bold">{locale === "en" ? "Assigned Bike" : "Moto Assegnata"}</span>
+                          <span className="block text-slate-400 uppercase tracking-wider text-xs font-bold">{locale === "en" ? "Assigned Bike" : "Moto Assegnata"}</span>
                           <span className="font-extrabold text-white uppercase text-xs">{bikeDisplayName(bb.bike)}</span>
-                          <span className="block text-[10px] text-slate-400 uppercase">{bb.bike.model.name}</span>
+                          <span className="block text-xs text-slate-400 uppercase">{bb.bike.model.name}</span>
                           {bb.championshipGroup && (
-                            <span className="inline-flex items-center gap-1 mt-1 bg-lime-400/10 border border-lime-400/30 text-lime-400 text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded">
+                            <span className="inline-flex items-center gap-1 mt-1 bg-lime-400/10 border border-lime-400/30 text-lime-400 text-xs font-extrabold uppercase px-1.5 py-0.5 rounded">
                               <span>{bb.championshipGroup.name}</span>
                               {bb.gridPosition ? <span>{"\u00b7 #" + bb.gridPosition}</span> : null}
                               {bb.championshipGroup.timeSlot ? <span>{"\u00b7 " + bb.championshipGroup.timeSlot}</span> : null}
                             </span>
                           )}
-                          <div className="flex items-center space-x-2 text-[10px] text-slate-400">
+                          <div className="flex items-center space-x-2 text-xs text-slate-400">
                             <span>Displacement: {bb.bike.model.displacement}cc</span>
                             {bb.bike.raceNumber && (
-                              <span className="bg-orange-600/10 border border-orange-500/20 text-orange-500 font-mono text-[9px] px-1 rounded">
+                              <span className="bg-orange-600/10 border border-orange-500/20 text-orange-500 font-mono text-xs px-1 rounded">
                                 #{bb.bike.raceNumber}
                               </span>
                             )}
@@ -556,15 +556,15 @@ export default function OrderDetails() {
                         {/* Add-ons detail */}
                         <div className="flex flex-col gap-1 text-right shrink-0">
                           {bb.insuranceSelected ? (
-                            <span className="text-[9px] bg-green-500/10 border border-green-500/25 text-green-400 font-extrabold uppercase px-2 py-0.5 rounded flex items-center justify-end space-x-1">
+                            <span className="text-xs bg-green-500/10 border border-green-500/25 text-green-400 font-extrabold uppercase px-2 py-0.5 rounded flex items-center justify-end space-x-1">
                               <ShieldCheck className="h-3 w-3" />
                               <span>{t.insuranceAdded}</span>
                             </span>
                           ) : (
-                            <span className="text-[9px] text-slate-600 uppercase font-mono">{t.noCover}</span>
+                            <span className="text-xs text-slate-600 uppercase font-mono">{t.noCover}</span>
                           )}
                           {bb.apparelSelected && (
-                            <span className="text-[9px] bg-blue-500/10 border border-blue-500/25 text-blue-400 font-extrabold uppercase px-2 py-0.5 rounded inline-block text-right">
+                            <span className="text-xs bg-blue-500/10 border border-blue-500/25 text-blue-400 font-extrabold uppercase px-2 py-0.5 rounded inline-block text-right">
                               {locale === "en" ? "Technical Apparel" : "Noleggio Abbigliamento"}
                             </span>
                           )}
@@ -572,8 +572,8 @@ export default function OrderDetails() {
                       </div>
 
                       {/* Cost Details per Person */}
-                      <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-900 text-[11px] space-y-2 text-slate-400 font-mono">
-                        <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-900 pb-1.5 mb-1.5">
+                      <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-900 text-xs space-y-2 text-slate-400 font-mono">
+                        <div className="flex justify-between text-xs font-bold uppercase tracking-wider text-slate-400 border-b border-slate-900 pb-1.5 mb-1.5">
                           <span>{locale === "en" ? "Rider Cost Item" : "Costo Singolo Pilota"}</span>
                           <span>{locale === "en" ? "Price" : "Prezzo"}</span>
                         </div>
@@ -617,7 +617,7 @@ export default function OrderDetails() {
               
               {/* QR Verification block */}
               <div className="bg-slate-900 border border-slate-850 p-6 rounded-3xl flex flex-col items-center text-center space-y-4 shadow-xl">
-                <span className="block text-[10px] text-slate-500 uppercase tracking-widest font-black font-mono">
+                <span className="block text-xs text-slate-400 uppercase tracking-wider font-black font-mono">
                   {locale === "en" ? "Verification QR Code" : "QR Code Verifica"}
                 </span>
                 
@@ -625,7 +625,7 @@ export default function OrderDetails() {
                   <div className="bg-white p-3 rounded-2xl shadow-xl">
                     <img 
                       src={qrCodeSrc} 
-                      alt="Paddock Pass QR" 
+                      alt={locale === "en" ? "Paddock Pass QR" : "QR Pass Paddock"} 
                       className="h-36 w-36 object-contain"
                     />
                   </div>
@@ -635,7 +635,7 @@ export default function OrderDetails() {
                   </div>
                 )}
                 
-                <p className="text-[10px] text-slate-400 leading-relaxed uppercase font-semibold">
+                <p className="text-xs text-slate-400 leading-relaxed uppercase font-semibold">
                   {locale === "en" 
                     ? "Present this pass on your mobile device at track registration or scan to check status."
                     : "Presenta questo pass sul tuo smartphone al banco d'ingresso per la verifica."
@@ -646,8 +646,8 @@ export default function OrderDetails() {
               {/* Total Summary Block */}
               <div className="bg-slate-900/60 border border-slate-850 p-6 rounded-3xl space-y-4 shadow-xl">
                 <div>
-                  <span className="block text-slate-500 uppercase tracking-widest text-[9px] font-bold">{locale === "en" ? "Invoice Grand Total" : "Prezzo Totale Ricevuta"}</span>
-                  <span className="text-[10px] text-slate-500 font-mono mt-0.5 block">{t.vatInclusive}</span>
+                  <span className="block text-slate-400 uppercase tracking-wider text-xs font-bold">{locale === "en" ? "Invoice Grand Total" : "Prezzo Totale Ricevuta"}</span>
+                  <span className="text-xs text-slate-400 font-mono mt-0.5 block">{t.vatInclusive}</span>
                 </div>
                 <div className="text-3xl font-black text-green-400">€{booking.totalPrice.toFixed(2)}</div>
               </div>
@@ -655,10 +655,10 @@ export default function OrderDetails() {
               {/* Average Price Per Person Block */}
               <div className="bg-slate-900/60 border border-slate-850 p-6 rounded-3xl space-y-4 shadow-xl">
                 <div>
-                  <span className="block text-slate-500 uppercase tracking-widest text-[9px] font-bold">
+                  <span className="block text-slate-400 uppercase tracking-wider text-xs font-bold">
                     {locale === "en" ? "Avg. Price Per Person" : "Prezzo Medio a Persona"}
                   </span>
-                  <span className="text-[10px] text-slate-500 font-mono mt-0.5 block">
+                  <span className="text-xs text-slate-400 font-mono mt-0.5 block">
                     {locale === "en" ? "Total price split by rider count" : "Prezzo totale diviso per il numero piloti"}
                   </span>
                 </div>
@@ -708,7 +708,7 @@ export default function OrderDetails() {
                   </Form>
                 )}
 
-                <div className="text-[10px] text-slate-500 leading-normal border-t border-slate-850 pt-3">
+                <div className="text-xs text-slate-400 leading-normal border-t border-slate-850 pt-3">
                   {isCancelled ? (
                     <span className="text-red-400 font-semibold uppercase">{locale === "en" ? "🚫 Cancelled Pass: Released bike allocations." : "🚫 Pass Annullato: Le moto sono state liberate."}</span>
                   ) : (
@@ -725,7 +725,7 @@ export default function OrderDetails() {
       </div>
 
       {/* Platform Branding Footer */}
-      <div className="max-w-7xl mx-auto text-center py-8 border-t border-slate-900/60 mt-12 text-[10px] text-slate-500 font-bold uppercase tracking-wider font-mono space-y-1 print:hidden">
+      <div className="max-w-7xl mx-auto text-center py-8 border-t border-slate-900/60 mt-12 text-xs text-slate-400 font-bold uppercase tracking-wider font-mono space-y-1 print:hidden">
         <div className="flex justify-center items-center space-x-2">
           <span>{locale === "en" ? "Software by" : "Software di"}</span>
           <a href="https://pikosoft.it" target="_blank" rel="noopener noreferrer" className="inline-flex items-center hover:opacity-80 transition-opacity">

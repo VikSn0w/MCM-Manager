@@ -46,7 +46,7 @@ export async function action({ request }: Route.ActionArgs) {
     discountThresholdPrice <= 0 ||
     pricePerSessionAfterThreshold < 0
   ) {
-    return { error: "Invalid pricing variables." };
+    return { error: "Valori di prezzo non validi." };
   }
 
   await prisma.tariff.update({
@@ -62,7 +62,7 @@ export async function action({ request }: Route.ActionArgs) {
     },
   });
 
-  return { success: "Tariff rules updated successfully." };
+  return { success: "Tariffe aggiornate." };
 }
 
 export default function AdminTariffs() {
@@ -90,7 +90,7 @@ export default function AdminTariffs() {
       
       {/* Title */}
       <div>
-        <span className="text-xs font-bold uppercase tracking-widest text-orange-500 font-mono">
+        <span className="text-xs font-bold uppercase tracking-wider text-orange-500 font-mono">
           {locale === "en" ? "Pricing Control" : "Controllo Tariffe"}
         </span>
         <h1 className="text-3xl font-black uppercase text-white tracking-tight mt-1">
@@ -138,7 +138,7 @@ export default function AdminTariffs() {
           return (
             <div 
               key={tariff.dayOfWeek}
-              className={`bg-slate-900/60 backdrop-blur border rounded-3xl p-6 sm:p-8 shadow-xl transition-all ${
+              className={`bg-slate-900/60 border rounded-3xl p-6 sm:p-8 shadow-xl transition-all ${
                 isEditing 
                   ? "border-orange-500" 
                   : isWeekend
@@ -157,7 +157,7 @@ export default function AdminTariffs() {
                       <h3 className="text-lg font-extrabold text-white uppercase">{weekdays[tariff.dayOfWeek]}</h3>
                     </div>
 
-                    <span className={`text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded border ${
+                    <span className={`text-xs font-black uppercase tracking-wider px-2 py-0.5 rounded border ${
                       isWeekend 
                         ? "bg-orange-950/60 text-orange-400 border-orange-500/10" 
                         : "bg-green-950/60 text-green-400 border-green-500/10"
@@ -170,14 +170,14 @@ export default function AdminTariffs() {
                   <div className="grid grid-cols-2 gap-6 text-xs font-mono">
                     
                     <div className="bg-slate-950 p-4 rounded-xl border border-slate-900">
-                      <span className="block text-slate-500 uppercase tracking-widest text-[9px] mb-1">
+                      <span className="block text-slate-400 uppercase tracking-wider text-xs mb-1">
                         {locale === "en" ? "Base Price / Session" : "Prezzo Base / Turno"}
                       </span>
                       <span className="text-xl font-black text-white">€{tariff.basePricePerSession.toFixed(2)}</span>
                     </div>
 
                     <div className="bg-slate-950 p-4 rounded-xl border border-slate-900">
-                      <span className="block text-slate-500 uppercase tracking-widest text-[9px] mb-1">
+                      <span className="block text-slate-400 uppercase tracking-wider text-xs mb-1">
                         {locale === "en" ? "Base Price / Rider" : "Prezzo Base / Pilota"}
                       </span>
                       <span className="text-xl font-black text-white">€{tariff.basePricePerPerson.toFixed(2)}</span>
@@ -185,15 +185,15 @@ export default function AdminTariffs() {
 
                     <div className="col-span-2 bg-slate-950/80 p-4 rounded-xl border border-slate-900/60 space-y-2">
                       <div className="flex justify-between items-center">
-                        <span className="text-slate-500 uppercase tracking-widest text-[9px]">
+                        <span className="text-slate-400 uppercase tracking-wider text-xs">
                           {locale === "en" ? "Package Promo" : "Promo Pacchetto"}
                         </span>
                         <span className="text-xs font-bold text-orange-400 font-mono">
                           {tariff.discountThreshold ?? 3} {locale === "en" ? "Turns" : "Turni"} @ €{(tariff.discountThresholdPrice ?? 60.0).toFixed(2)}
                         </span>
                       </div>
-                      <div className="flex justify-between items-center border-t border-slate-900 pt-1.5 text-[9px]">
-                        <span className="text-slate-500 uppercase tracking-widest">
+                      <div className="flex justify-between items-center border-t border-slate-900 pt-1.5 text-xs">
+                        <span className="text-slate-400 uppercase tracking-wider">
                           {locale === "en" ? "Extra Turn Rate" : "Tariffa Turni Extra"}
                         </span>
                         <span className="font-semibold text-slate-300 font-mono">
@@ -202,7 +202,7 @@ export default function AdminTariffs() {
                       </div>
                     </div>
 
-                    <div className="col-span-2 flex justify-between items-center text-[10px] text-slate-500 uppercase tracking-wider font-bold pt-2 border-t border-slate-850/60">
+                    <div className="col-span-2 flex justify-between items-center text-xs text-slate-400 uppercase tracking-wider font-bold pt-2 border-t border-slate-850/60">
                       <span>{locale === "en" ? "Min Sessions" : "Min Turni"}: <strong className="text-white">{tariff.minSessions}</strong></span>
                       <span>{locale === "en" ? "Max Sessions" : "Max Turni"}: <strong className="text-white">{tariff.maxSessions}</strong></span>
                     </div>
@@ -233,7 +233,7 @@ export default function AdminTariffs() {
                     <button
                       type="button"
                       onClick={() => setEditingDay(null)}
-                      className="text-xs text-slate-500 hover:text-white uppercase font-bold cursor-pointer"
+                      className="text-xs text-slate-400 hover:text-white uppercase font-bold cursor-pointer"
                     >
                       {locale === "en" ? "Cancel" : "Annulla"}
                     </button>
@@ -242,7 +242,7 @@ export default function AdminTariffs() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                     
                     <div>
-                      <label className="block text-xs uppercase text-slate-500 font-bold tracking-wider mb-2">
+                      <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider mb-2">
                         {locale === "en" ? "Base Price / Session (€)" : "Prezzo Base / Turno (€)"}
                       </label>
                       <input
@@ -256,7 +256,7 @@ export default function AdminTariffs() {
                     </div>
 
                     <div>
-                      <label className="block text-xs uppercase text-slate-500 font-bold tracking-wider mb-2">
+                      <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider mb-2">
                         {locale === "en" ? "Base Price / Rider Entrance (€)" : "Prezzo Base / Ingresso Pilota (€)"}
                       </label>
                       <input
@@ -270,7 +270,7 @@ export default function AdminTariffs() {
                     </div>
 
                     <div>
-                      <label className="block text-xs uppercase text-slate-500 font-bold tracking-wider mb-2">
+                      <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider mb-2">
                         {locale === "en" ? "Min Sessions Limit" : "Limite Min Turni"}
                       </label>
                       <input
@@ -283,7 +283,7 @@ export default function AdminTariffs() {
                     </div>
 
                     <div>
-                      <label className="block text-xs uppercase text-slate-500 font-bold tracking-wider mb-2">
+                      <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider mb-2">
                         {locale === "en" ? "Max Sessions Limit" : "Limite Max Turni"}
                       </label>
                       <input
@@ -296,7 +296,7 @@ export default function AdminTariffs() {
                     </div>
 
                     <div>
-                      <label className="block text-xs uppercase text-slate-500 font-bold tracking-wider mb-2">
+                      <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider mb-2">
                         {locale === "en" ? "Discount Trigger (Sessions)" : "Soglia Sconto Turni (Sessioni)"}
                       </label>
                       <input
@@ -309,7 +309,7 @@ export default function AdminTariffs() {
                     </div>
 
                     <div>
-                      <label className="block text-xs uppercase text-slate-500 font-bold tracking-wider mb-2">
+                      <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider mb-2">
                         {locale === "en" ? "Package Price (€)" : "Prezzo Pacchetto Sconto (€)"}
                       </label>
                       <input
@@ -323,7 +323,7 @@ export default function AdminTariffs() {
                     </div>
 
                     <div className="sm:col-span-2">
-                      <label className="block text-xs uppercase text-slate-500 font-bold tracking-wider mb-2">
+                      <label className="block text-xs uppercase text-slate-400 font-bold tracking-wider mb-2">
                         {locale === "en" ? "Subsequent Rate Per Session (€)" : "Prezzo Turni Successivi (€)"}
                       </label>
                       <input

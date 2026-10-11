@@ -118,13 +118,13 @@ async function main() {
       insuranceCoverage: 200.0,
       imageUrl: "/images/ohvale-gp0-110-automatica.jpg",
       bgColor: "#FFFFFF",
-      info: "Perfect starting machine for youngsters and beginners. Fully automatic single-speed transmission.",
+      info: "La moto ideale per giovani e principianti. Trasmissione completamente automatica a una marcia.",
       hp: 10.0,
       hpRpm: 6000,
       torque: 6.7,
       torqueRpm: 6500,
       usage: "BOTH",
-      gearbox: "Automatic",
+      gearbox: "Automatico",
     }
   });
 
@@ -139,13 +139,13 @@ async function main() {
       insuranceCoverage: 250.0,
       imageUrl: "/images/160_lat_bianco-1024x702.jpg",
       bgColor: "#FFFFFF",
-      info: "Mid-tier machine with standard 4-speed manual gearbox. Great balance of agility and power.",
+      info: "Moto di fascia media con cambio manuale a 4 marce. Ottimo equilibrio tra agilità e potenza.",
       hp: 15.0,
       hpRpm: 9500,
       torque: 12.0,
       torqueRpm: 8000,
       usage: "BOTH",
-      gearbox: "4-Speed",
+      gearbox: "4 marce",
     }
   });
 
@@ -160,13 +160,13 @@ async function main() {
       insuranceCoverage: 350.0,
       imageUrl: "/images/GP2_190-RACE_26_RED-scaled.png",
       bgColor: "#FFFFFF",
-      info: "Top-tier racing mini-motard. High-displacement engine, premium chassis, adjustable suspension.",
+      info: "Mini-motard da corsa di fascia alta. Motore di grossa cilindrata, telaio premium, sospensioni regolabili.",
       hp: 24.0,
       hpRpm: 9500,
       torque: 17.0,
       torqueRpm: 8000,
       usage: "RENTAL",
-      gearbox: "4-Speed",
+      gearbox: "4 marce",
     }
   });
 
@@ -181,13 +181,13 @@ async function main() {
       insuranceCoverage: 300.0,
       imageUrl: "/images/GP2_190-RACE_26_RED-scaled.png",
       bgColor: "#FFFFFF",
-      info: "Legacy chassis with high-performance 190cc engine configuration. A pocket rocket.",
+      info: "Telaio storico con motore 190cc ad alte prestazioni. Un piccolo razzo.",
       hp: 24.0,
       hpRpm: 9500,
       torque: 18.0,
       torqueRpm: 8000,
       usage: "ACADEMY",
-      gearbox: "4-Speed",
+      gearbox: "4 marce",
     }
   });
 
@@ -236,10 +236,10 @@ async function main() {
 
   // 5. Create Time Slots
   const slots = [
-    { time: "09:00", label: "Morning Session 1", maxParticipants: 5 },
-    { time: "11:00", label: "Morning Session 2", maxParticipants: 5 },
-    { time: "14:00", label: "Afternoon Session 1", maxParticipants: 5 },
-    { time: "16:00", label: "Afternoon Session 2", maxParticipants: 5 },
+    { time: "09:00", label: "Turno mattina 1", maxParticipants: 5 },
+    { time: "11:00", label: "Turno mattina 2", maxParticipants: 5 },
+    { time: "14:00", label: "Turno pomeriggio 1", maxParticipants: 5 },
+    { time: "16:00", label: "Turno pomeriggio 2", maxParticipants: 5 },
   ];
 
   for (const s of slots) {
@@ -258,7 +258,7 @@ async function main() {
     data: {
       date: formatOverrideDate(blockedDate),
       isAvailable: false,
-      notes: "Track rented for Mugello Moto3 Private Testing",
+      notes: "Pista noleggiata per test privati Moto3 al Mugello",
     },
   });
 
@@ -270,7 +270,7 @@ async function main() {
       date: formatOverrideDate(reducedCapacityDate),
       isAvailable: true,
       maxCapacityPerSlot: 2,
-      notes: "Coaching Class: Max 2 Riders per Session",
+      notes: "Corso di coaching: max 2 piloti per turno",
     },
   });
 
@@ -280,7 +280,7 @@ async function main() {
   await prisma.championship.create({
     data: {
       name: "GP Sprint",
-      description: "10 mins of free laps, 10 mins of qualify laps, and an 8-lap race (minimum 5 racers).",
+      description: "10 minuti di giri liberi, 10 minuti di qualifica e una gara di 8 giri (minimo 5 piloti).",
       price: 65.0,
       minRacers: 5,
       sessionsCount: 3,
@@ -291,7 +291,7 @@ async function main() {
   await prisma.championship.create({
     data: {
       name: "GP PLUS",
-      description: "10 mins of free laps, 10 mins of qualify laps, an 8-lap Race 1, and an 8-lap Race 2 (minimum 5 racers).",
+      description: "10 minuti di giri liberi, 10 minuti di qualifica, Gara 1 di 8 giri e Gara 2 di 8 giri (minimo 5 piloti).",
       price: 85.0,
       minRacers: 5,
       sessionsCount: 4,
@@ -304,7 +304,7 @@ async function main() {
   await prisma.championship.create({
     data: {
       name: "GP Summer Cup",
-      description: "10 mins of free laps, 10 mins of qualify laps, and a 15-lap main race.",
+      description: "10 minuti di giri liberi, 10 minuti di qualifica e una gara principale di 15 giri.",
       price: 95.0,
       minRacers: 5,
       sessionsCount: 4,
