@@ -127,7 +127,7 @@ export async function requireUserId(
 export async function requireUser(request: Request) {
   const user = await loadUser(request);
   if (!user) {
-    throw logout(request);
+    throw await logout(request);
   }
   return user;
 }
